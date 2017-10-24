@@ -34,7 +34,7 @@ type Job struct {
 	Failed                   []string          `json:"Failed,omitempty"`
 	Status                   State             `json:"Status"`
 	ErrorMessage             string            `json:"ErrorMessage,omitempty"`
-	ContentRetrievalThrottle int            `json:"ContentRetrievalThrottle"`
+	ContentRetrievalThrottle int               `json:"-"`
 }
 
 func NewFullExporter(nrOfWorkers int, exporter *content.Exporter) *Service {
