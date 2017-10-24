@@ -204,7 +204,7 @@ func main() {
 		uploader := &content.S3Updater{Client: client, S3WriterBaseURL: *s3WriterBaseURL, S3WriterHealthURL: *s3WriterHealthURL}
 
 		exporter := content.NewExporter(fetcher, uploader)
-		fullExporter := export.NewFullExporter(30, exporter)
+		fullExporter := export.NewFullExporter(20, exporter)
 		locker := export.NewLocker()
 		var kafkaListener *queue.KafkaListener
 		if !(*isIncExportEnabled) {
