@@ -5,6 +5,7 @@ import (
 	"github.com/Financial-Times/content-exporter/content"
 	log "github.com/sirupsen/logrus"
 	"sync"
+	"time"
 )
 
 type Service struct {
@@ -18,21 +19,22 @@ type State string
 
 const (
 	STARTING State = "Starting"
-	RUNNING  State = "Running"
+	RUNNING State = "Running"
 	FINISHED State = "Finished"
 )
 
 type Job struct {
 	sync.RWMutex
-	wg           sync.WaitGroup
-	NrWorker     int               `json:"-"`
-	DocIds       chan content.Stub `json:"-"`
-	ID           string            `json:"ID"`
-	Count        int               `json:"Count,omitempty"`
-	Progress     int               `json:"Progress,omitempty"`
-	Failed       []string          `json:"Failed,omitempty"`
-	Status       State             `json:"Status"`
-	ErrorMessage string            `json:"ErrorMessage,omitempty"`
+	wg                       sync.WaitGroup
+	NrWorker                 int               `json:"-"`
+	DocIds                   chan content.Stub `json:"-"`
+	ID                       string            `json:"ID"`
+	Count                    int               `json:"Count,omitempty"`
+	Progress                 int               `json:"Progress,omitempty"`
+	Failed                   []string          `json:"Failed,omitempty"`
+	Status                   State             `json:"Status"`
+	ErrorMessage             string            `json:"ErrorMessage,omitempty"`
+	ContentRetrievalThrottle int            `json:"ContentRetrievalThrottle"`
 }
 
 func NewFullExporter(nrOfWorkers int, exporter *content.Exporter) *Service {
@@ -105,6 +107,7 @@ func (job *Job) RunFullExport(tid string, export func(string, content.Stub) erro
 		job.wg.Add(1)
 		go func() {
 			defer job.wg.Done()
+			time.Sleep(time.Duration(job.ContentRetrievalThrottle) * time.Millisecond)
 			if err := export(tid, doc); err != nil {
 				log.WithField("transaction_id", tid).WithField("uuid", doc.Uuid).Error(err)
 				job.Lock()

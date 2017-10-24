@@ -16,18 +16,21 @@ import (
 )
 
 type RequestHandler struct {
-	FullExporter *export.Service
-	Inquirer     content.Inquirer
+	FullExporter             *export.Service
+	Inquirer                 content.Inquirer
+	ContentRetrievalThrottle int
 	*export.Locker
-	IsIncExportEnabled bool
+	IsIncExportEnabled       bool
 }
 
-func NewRequestHandler(fullExporter *export.Service, inquirer content.Inquirer, locker *export.Locker, isIncExportEnabled bool) *RequestHandler {
+func NewRequestHandler(fullExporter *export.Service, inquirer content.Inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int) *RequestHandler {
 	return &RequestHandler{
 		FullExporter:       fullExporter,
 		Inquirer:           inquirer,
 		Locker:             locker,
 		IsIncExportEnabled: isIncExportEnabled,
+		ContentRetrievalThrottle:contentRetrievalThrottle,
+
 	}
 }
 
@@ -66,7 +69,7 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 	candidates := getCandidateUUIDs(request)
 
 	jobID := uuid.New()
-	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.NrOfConcurrentWorkers, Status: export.STARTING}
+	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.NrOfConcurrentWorkers, Status: export.STARTING, ContentRetrievalThrottle:handler.ContentRetrievalThrottle}
 	handler.FullExporter.AddJob(job)
 
 	go func() {
