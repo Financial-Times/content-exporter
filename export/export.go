@@ -107,7 +107,9 @@ func (job *Job) RunFullExport(tid string, export func(string, content.Stub) erro
 		job.wg.Add(1)
 		go func() {
 			defer job.wg.Done()
+			log.Infof("sleeping for %d milliseconds..",job.ContentRetrievalThrottle)
 			time.Sleep(time.Duration(job.ContentRetrievalThrottle) * time.Millisecond)
+			log.Infof("finished sleeping..")
 			if err := export(tid, doc); err != nil {
 				log.WithField("transaction_id", tid).WithField("uuid", doc.Uuid).Error(err)
 				job.Lock()
