@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"io/ioutil"
 )
 
 const s3WriterPath = "/content/"
@@ -20,7 +21,7 @@ type S3Updater struct {
 }
 
 func (u *S3Updater) Delete(uuid, tid string) error {
-	req, err := http.NewRequest("DELETE", u.S3WriterBaseURL+s3WriterPath+uuid, nil)
+	req, err := http.NewRequest("DELETE", u.S3WriterBaseURL + s3WriterPath + uuid, nil)
 	if err != nil {
 		return err
 	}
@@ -33,7 +34,8 @@ func (u *S3Updater) Delete(uuid, tid string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Content RW S3 returned HTTP %v", resp.StatusCode)
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("Content RW S3 returned HTTP %v with message: %s", resp.StatusCode, string(body))
 	}
 
 	return nil
@@ -46,7 +48,7 @@ func (u *S3Updater) Upload(content []byte, tid, uuid, date string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("PUT", u.S3WriterBaseURL+s3WriterPath+uuid+"?date="+date, buf)
+	req, err := http.NewRequest("PUT", u.S3WriterBaseURL + s3WriterPath + uuid + "?date=" + date, buf)
 	if err != nil {
 		return err
 	}
