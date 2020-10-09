@@ -1,14 +1,15 @@
 package content
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/gorilla/mux"
 	"github.com/pborman/uuid"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -145,7 +146,10 @@ func TestEnrichedContentFetcherGetContentWithErrorOnNewRequest(t *testing.T) {
 
 	_, err := fetcher.GetContent("uuid1", "tid_1234")
 	assert.Error(t, err)
-	assert.Equal(t, "parse :///enrichedcontent/uuid1: missing protocol scheme", err.Error())
+
+	var urlErr *url.Error
+	assert.True(t, errors.As(err, &urlErr))
+	assert.Equal(t, urlErr.Op, "parse")
 }
 
 func TestEnrichedContentFetcherGetContentErrorOnRequestDo(t *testing.T) {
@@ -196,8 +200,11 @@ func TestEnrichedContentFetcherCheckHealthErrorOnNewRequest(t *testing.T) {
 	resp, err := fetcher.CheckHealth(&http.Client{})
 
 	assert.Error(t, err)
-	assert.Equal(t, "parse ://: missing protocol scheme", err.Error())
 	assert.Equal(t, "Error in building request to check if the enrichedContent fetcher is good to go", resp)
+
+	var urlErr *url.Error
+	assert.True(t, errors.As(err, &urlErr))
+	assert.Equal(t, urlErr.Op, "parse")
 }
 
 func TestEnrichedContentFetcherCheckHealthErrorOnRequestDo(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -115,7 +116,10 @@ func TestS3UpdaterUploadContentWithErrorOnNewRequest(t *testing.T) {
 
 	err := updater.Upload(nil, "tid_1234", "uuid1", "aDate")
 	assert.Error(t, err)
-	assert.Equal(t, "parse :///content/uuid1?date=aDate: missing protocol scheme", err.Error())
+
+	var urlErr *url.Error
+	assert.True(t, errors.As(err, &urlErr))
+	assert.Equal(t, urlErr.Op, "parse")
 }
 
 func TestS3UpdaterUploadContentErrorOnRequestDo(t *testing.T) {
@@ -166,7 +170,10 @@ func TestS3UpdaterDeleteContentErrorOnNewRequest(t *testing.T) {
 
 	err := updater.Delete("uuid1", "tid_1234")
 	assert.Error(t, err)
-	assert.Equal(t, "parse :///content/uuid1: missing protocol scheme", err.Error())
+
+	var urlErr *url.Error
+	assert.True(t, errors.As(err, &urlErr))
+	assert.Equal(t, urlErr.Op, "parse")
 }
 
 func TestS3UpdaterDeleteContentErrorOnRequestDo(t *testing.T) {
@@ -217,8 +224,11 @@ func TestS3UpdaterCheckHealthErrorOnNewRequest(t *testing.T) {
 
 	resp, err := updater.CheckHealth(&http.Client{})
 	assert.Error(t, err)
-	assert.Equal(t, "parse ://: missing protocol scheme", err.Error())
 	assert.Equal(t, "Error in building request to check if the S3 Writer is good to go", resp)
+
+	var urlErr *url.Error
+	assert.True(t, errors.As(err, &urlErr))
+	assert.Equal(t, urlErr.Op, "parse")
 }
 
 func TestS3UpdaterCheckHealthErrorOnRequestDo(t *testing.T) {
