@@ -1,12 +1,12 @@
 package queue
 
 import (
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/kafka-client-go/kafka"
-	"errors"
 	log "github.com/sirupsen/logrus"
 )
 

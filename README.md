@@ -70,7 +70,7 @@ Usage: content-exporter [OPTIONS]
 HTTP Endpoints are only for FULL and TARGETED exports
 
 ### POST
-* `/export` - Triggers an export. If `ids` is in the json body request, then a TARGETED export is triggered, otherwise a FULL export
+* `/export` - Triggers an export. To trigger a full export you must provide the `fullExport=true` query parameter. If you want it to be targetet, you can provide `ids` in the JSON body. You must provide at least one of them. Passing  both will result in an error.
 ### GET
 * `/jobs` - Returns all the running jobs
 * `/jobs/{jobID}` - Returns the job specified by the `jobID` parameter

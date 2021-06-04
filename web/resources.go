@@ -67,6 +67,19 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 		}
 	}
 	candidates := getCandidateUUIDs(request)
+	isFullExport := request.URL.Query().Get("fullExport") == "true"
+
+	if len(candidates) == 0 && !isFullExport {
+		log.Warn("Can't trigger a non-full export without ids")
+		sendFailedExportResponse(writer, "Pass a list of ids or trigger a full export flag")
+		return
+	}
+
+	if len(candidates) > 0 && isFullExport {
+		log.Warn("Can't trigger a full export with ids")
+		sendFailedExportResponse(writer, "Pass either a list of ids or the full export flag")
+		return
+	}
 
 	jobID := uuid.New()
 	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.NrOfConcurrentWorkers, Status: export.STARTING, ContentRetrievalThrottle: handler.ContentRetrievalThrottle}
@@ -104,6 +117,19 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 		log.Warn(msg)
 		fmt.Fprintf(writer, "{\"ID\": \"%v\"}", job.ID)
 		return
+	}
+}
+
+func sendFailedExportResponse(writer http.ResponseWriter, msg string) {
+	response := map[string]string{
+		"error": msg,
+	}
+
+	writer.WriteHeader(http.StatusBadRequest)
+	writer.Header().Add("Content-Type", "application/json")
+	err := json.NewEncoder(writer).Encode(response)
+	if err != nil {
+		log.Warn("Could not stringify failed export response")
 	}
 }
 

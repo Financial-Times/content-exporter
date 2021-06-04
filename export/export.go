@@ -40,7 +40,7 @@ type Job struct {
 
 func NewFullExporter(nrOfWorkers int, exporter *content.Exporter) *Service {
 	return &Service{
-		jobs: make(map[string]*Job),
+		jobs:                  make(map[string]*Job),
 		NrOfConcurrentWorkers: nrOfWorkers,
 		Exporter:              exporter,
 	}
