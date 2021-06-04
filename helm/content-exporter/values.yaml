@@ -16,8 +16,6 @@ resources:
 env:
   enrichedContent:
     baseUrl: "http://api-policy-component:8080"
-  s3Writer:
-    baseUrl: "http://upp-exports-rw-s3:8080"
   kafka:
     groupId: "k8s-content-exporter"
     topic: "PostPublicationEvents"

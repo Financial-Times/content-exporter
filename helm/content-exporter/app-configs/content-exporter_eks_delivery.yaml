@@ -1,3 +1,6 @@
 # Values used for the deployed application.
 service:
   name: content-exporter
+env:
+  s3Writer:
+    baseUrl: "http://upp-exports-rw-s3:8080"
