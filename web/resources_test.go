@@ -1,13 +1,14 @@
 package web
 
 import (
-	"github.com/Financial-Times/content-exporter/content"
-	"github.com/Financial-Times/content-exporter/export"
-	"github.com/gorilla/mux"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Financial-Times/content-exporter/content"
+	"github.com/Financial-Times/content-exporter/export"
+	"github.com/gorilla/mux"
 )
 
 type exporterMock struct {
@@ -46,10 +47,10 @@ func (e *exporterMock) GetWorkerCount() int {
 }
 
 type inquirerMock struct {
-	inquireF func(collection string, candidates []string) (chan content.Stub, error, int)
+	inquireF func(collection string, candidates []string) (chan content.Stub, int, error)
 }
 
-func (i *inquirerMock) Inquire(collection string, candidates []string) (chan content.Stub, error, int) {
+func (i *inquirerMock) Inquire(collection string, candidates []string) (chan content.Stub, int, error) {
 	if i.inquireF != nil {
 		return i.inquireF(collection, candidates)
 	}
@@ -136,9 +137,9 @@ func TestRequestHandler_Export(t *testing.T) {
 				},
 			},
 			inquirer: &inquirerMock{
-				inquireF: func(collection string, candidates []string) (chan content.Stub, error, int) {
+				inquireF: func(collection string, candidates []string) (chan content.Stub, int, error) {
 					c := make(chan content.Stub)
-					return c, nil, 0
+					return c, 0, nil
 				},
 			},
 			locker:           export.NewLocker(),
@@ -162,9 +163,9 @@ func TestRequestHandler_Export(t *testing.T) {
 				},
 			},
 			inquirer: &inquirerMock{
-				inquireF: func(collection string, candidates []string) (chan content.Stub, error, int) {
+				inquireF: func(collection string, candidates []string) (chan content.Stub, int, error) {
 					c := make(chan content.Stub)
-					return c, nil, 0
+					return c, 0, nil
 				},
 			},
 			locker:           export.NewLocker(),

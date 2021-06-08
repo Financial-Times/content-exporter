@@ -101,7 +101,7 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 			}()
 		}
 		log.Infoln("Calling mongo")
-		docs, err, count := handler.Inquirer.Inquire("content", candidates)
+		docs, count, err := handler.Inquirer.Inquire("content", candidates)
 		if err != nil {
 			msg := fmt.Sprintf(`Failed to read IDs from mongo for %v! "%v"`, "content", err.Error())
 			log.Info(msg)
