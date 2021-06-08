@@ -41,6 +41,8 @@ spec:
           value: "{{ .Values.env.s3Writer.baseUrl }}"
         - name: S3_WRITER_HEALTH_URL
           value: "{{ .Values.env.s3Writer.baseUrl }}/__gtg"
+        - name: X_POLICY_HEADER_VALUES
+          value: "{{ .Values.env.xPolicyHeaderValues }}"
         - name: MONGO_CONNECTION
           valueFrom:
             configMapKeyRef:

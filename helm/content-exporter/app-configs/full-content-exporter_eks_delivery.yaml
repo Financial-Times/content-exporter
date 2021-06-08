@@ -1,0 +1,7 @@
+# Values used for the deployed application.
+service:
+  name: full-content-exporter
+env:
+  s3Writer:
+    baseUrl: "http://upp-full-exports-rw-s3:8080"
+  xPolicyHeaderValues: "INTERNAL_UNSTABLE"

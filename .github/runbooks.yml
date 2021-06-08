@@ -35,4 +35,5 @@ runbooks:
   # runbook.md tries to parse the system code from the runbook's filename (format: my-sys-code_runbook.md)
   systemCodes:
     # paths are relative to root, omitting ./ (case-insensitive)
-    content-exporter: runbooks/runbook.md
+    content-exporter: runbooks/content-exporter-runbook.md
+    full-content-exporter: runbooks/full-content-exporter-runbook.md
