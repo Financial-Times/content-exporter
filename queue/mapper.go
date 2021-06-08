@@ -34,39 +34,20 @@ type event struct {
 	Payload    interface{}
 }
 
-func (e event) hasEmptyPayload() bool {
-	switch v := e.Payload.(type) {
-	case nil:
-		return true
-	case string:
-		if len(v) == 0 {
-			return true
-		}
-	case map[string]interface{}:
-		if len(v) == 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func (e event) mapNotification(tid string) (*Notification, error) {
+func (e *event) mapNotification(tid string) (*Notification, error) {
 	UUID := UUIDRegexp.FindString(e.ContentURI)
 	if UUID == "" {
 		return nil, fmt.Errorf("ContentURI does not contain a UUID")
 	}
 
-	var evType EventType
-	var payload map[string]interface{}
+	payload, ok := e.Payload.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid payload type: %T", e.Payload)
+	}
 
-	if e.hasEmptyPayload() {
+	evType := UPDATE
+	if deleted, _ := payload["deleted"].(bool); deleted {
 		evType = DELETE
-	} else {
-		evType = UPDATE
-		notificationPayloadMap, ok := e.Payload.(map[string]interface{})
-		if ok {
-			payload = notificationPayloadMap
-		}
 	}
 
 	var canBeDistributed *string

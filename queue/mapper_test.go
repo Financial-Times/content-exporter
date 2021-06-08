@@ -30,30 +30,18 @@ func testMapDeleteMessageSuccessfully(t *testing.T, ev event, testUUID string) {
 	assert.Nil(t, n.Stub.CanBeDistributed)
 }
 
-func TestKafkaMessageMapperMapDeleteMessageSuccessfullyWithoutPayload(t *testing.T) {
-	testUUID := uuid.New()
-	testMapDeleteMessageSuccessfully(t, event{
-		ContentURI: "http://methode-article-mapper.svc.ft.com/content/" + testUUID}, testUUID)
-}
-
-func TestKafkaMessageMapperMapDeleteAudioMessageSuccessfullyWithoutPayload(t *testing.T) {
-	testUUID := uuid.New()
-	testMapDeleteMessageSuccessfully(t, event{
-		ContentURI: "http://upp-content-validator.svc.ft.com/audio/" + testUUID}, testUUID)
-}
-
-func TestKafkaMessageMapperMapDeleteMessageSuccessfullyWithEmptyPayload(t *testing.T) {
+func TestKafkaMessageMapperMapDeleteMessageSuccessfully(t *testing.T) {
 	testUUID := uuid.New()
 	testMapDeleteMessageSuccessfully(t, event{
 		ContentURI: "http://methode-article-mapper.svc.ft.com/content/" + testUUID,
-		Payload:    map[string]interface{}{}}, testUUID)
+		Payload:    map[string]interface{}{"deleted": true}}, testUUID)
 }
 
-func TestKafkaMessageMapperMapDeleteMessageSuccessfullyWithEmptyStringPayload(t *testing.T) {
+func TestKafkaMessageMapperMapDeleteAudioMessageSuccessfully(t *testing.T) {
 	testUUID := uuid.New()
 	testMapDeleteMessageSuccessfully(t, event{
-		ContentURI: "http://methode-article-mapper.svc.ft.com/content/" + testUUID,
-		Payload:    ""}, testUUID)
+		ContentURI: "http://upp-content-validator.svc.ft.com/audio/" + testUUID,
+		Payload:    map[string]interface{}{"deleted": true}}, testUUID)
 }
 
 func TestKafkaMessageMapperMapUpdateMessageSuccessfully(t *testing.T) {
@@ -159,5 +147,20 @@ func TestKafkaMessageMapperMapNotificationMessageParseError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Equal(t, "invalid character 'r' looking for beginning of value", err.Error())
+	assert.Nil(t, n)
+}
+
+func TestKafkaMessageMapperMapNotificationInvalidPayloadType(t *testing.T) {
+	testUUID := uuid.New()
+	body, err := json.Marshal(event{
+		ContentURI: "http://methode-article-mapper.svc.ft.com/content/" + testUUID,
+		Payload:    []interface{}{"title", "This is a title"}})
+	require.NoError(t, err)
+
+	messageMapper := NewComplexMessageMapper()
+	n, err := messageMapper.MapNotification(kafka.FTMessage{Body: string(body), Headers: map[string]string{"X-Request-Id": "tid_1234"}})
+
+	require.Error(t, err)
+	assert.Equal(t, "invalid payload type: []interface {}", err.Error())
 	assert.Nil(t, n)
 }
