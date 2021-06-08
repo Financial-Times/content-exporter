@@ -16,15 +16,23 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type Exporter interface {
+	GetJob(jobID string) (export.Job, error)
+	GetRunningJobs() []export.Job
+	AddJob(job *export.Job)
+	HandleContent(tid string, doc content.Stub) error
+	GetWorkerCount() int
+}
+
 type RequestHandler struct {
-	FullExporter             *export.Service
+	FullExporter             Exporter
 	Inquirer                 content.Inquirer
 	ContentRetrievalThrottle int
 	*export.Locker
 	IsIncExportEnabled bool
 }
 
-func NewRequestHandler(fullExporter *export.Service, inquirer content.Inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int) *RequestHandler {
+func NewRequestHandler(fullExporter Exporter, inquirer content.Inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int) *RequestHandler {
 	return &RequestHandler{
 		FullExporter:             fullExporter,
 		Inquirer:                 inquirer,
@@ -77,12 +85,12 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 
 	if len(candidates) > 0 && isFullExport {
 		log.Warn("Can't trigger a full export with ids")
-		sendFailedExportResponse(writer, "Pass either a list of ids or the full export flag")
+		sendFailedExportResponse(writer, "Pass either a list of ids or the full export flag, not both")
 		return
 	}
 
 	jobID := uuid.New()
-	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.NrOfConcurrentWorkers, Status: export.STARTING, ContentRetrievalThrottle: handler.ContentRetrievalThrottle}
+	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.GetWorkerCount(), Status: export.STARTING, ContentRetrievalThrottle: handler.ContentRetrievalThrottle}
 	handler.FullExporter.AddJob(job)
 
 	go func() {
