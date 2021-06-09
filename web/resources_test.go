@@ -135,6 +135,9 @@ func TestRequestHandler_Export(t *testing.T) {
 				getWorkerCountF: func() int {
 					return 1
 				},
+				handleContentF: func(tid string, doc content.Stub) error {
+					return nil
+				},
 			},
 			inquirer: &inquirerMock{
 				inquireF: func(collection string, candidates []string) (chan content.Stub, int, error) {
@@ -144,7 +147,7 @@ func TestRequestHandler_Export(t *testing.T) {
 			},
 			locker:           export.NewLocker(),
 			incExportEnabled: false,
-			throttle:         10,
+			throttle:         0,
 			getHTTPRequest: func() *http.Request {
 				body := strings.NewReader(``)
 				req, _ := http.NewRequest("POST", "/export?fullExport=true", body)

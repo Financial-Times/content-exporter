@@ -92,6 +92,10 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 	jobID := uuid.New()
 	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.GetWorkerCount(), Status: export.STARTING, ContentRetrievalThrottle: handler.ContentRetrievalThrottle}
 	handler.FullExporter.AddJob(job)
+	response := map[string]string{
+		"ID":     job.ID,
+		"Status": string(job.Status),
+	}
 
 	go func() {
 		if handler.IsIncExportEnabled {
@@ -119,7 +123,7 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 	writer.WriteHeader(http.StatusAccepted)
 	writer.Header().Add("Content-Type", "application/json")
 
-	err := json.NewEncoder(writer).Encode(job)
+	err := json.NewEncoder(writer).Encode(response)
 	if err != nil {
 		msg := fmt.Sprintf(`Failed to write job %v to response writer: "%v"`, job.ID, err)
 		log.Warn(msg)
