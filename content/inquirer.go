@@ -8,7 +8,7 @@ import (
 )
 
 type Inquirer interface {
-	Inquire(collection string, candidates []string) (chan Stub, error, int)
+	Inquire(collection string, candidates []string) (chan Stub, int, error)
 }
 
 type MongoInquirer struct {
@@ -19,16 +19,16 @@ func NewMongoInquirer(mongo db.Service) *MongoInquirer {
 	return &MongoInquirer{Mongo: mongo}
 }
 
-func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan Stub, error, int) {
+func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan Stub, int, error) {
 	tx, err := m.Mongo.Open()
 
 	if err != nil {
-		return nil, err, 0
+		return nil, 0, err
 	}
 	iter, length, err := tx.FindUUIDs(collection, candidates)
 	if err != nil {
 		tx.Close()
-		return nil, err, 0
+		return nil, 0, err
 	}
 
 	docs := make(chan Stub, 8)
@@ -52,7 +52,7 @@ func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan St
 		log.Infof("Processed %v docs", counter)
 	}()
 
-	return docs, nil, length
+	return docs, length, nil
 }
 
 func mapStub(result map[string]interface{}) (Stub, error) {

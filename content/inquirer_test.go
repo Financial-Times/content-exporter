@@ -90,7 +90,7 @@ func TestMongoInquirerInquireSuccessfully(t *testing.T) {
 	mockIter.On("Close").Return(nil)
 	inquirer := NewInquirer(mockDb)
 
-	docCh, err, count := inquirer.Inquire(testCollection, nil)
+	docCh, count, err := inquirer.Inquire(testCollection, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, count)
 waitLoop:
@@ -132,7 +132,7 @@ func TestMongoInquirerInquireWithoutValidContent(t *testing.T) {
 	mockIter.On("Close").Return(nil)
 	inquirer := NewInquirer(mockDb)
 
-	docCh, err, count := inquirer.Inquire(testCollection, candidates)
+	docCh, count, err := inquirer.Inquire(testCollection, candidates)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, count)
 waitLoop:
@@ -167,7 +167,7 @@ func TestMongoInquirerInquireErrorFindingUUIDs(t *testing.T) {
 
 	inquirer := NewInquirer(mockDb)
 
-	docCh, err, count := inquirer.Inquire(testCollection, candidates)
+	docCh, count, err := inquirer.Inquire(testCollection, candidates)
 	assert.Error(t, err)
 	assert.Equal(t, "Mongo err", err.Error())
 	assert.Equal(t, 0, count)
@@ -191,7 +191,7 @@ func TestMongoInquirerInquireErrorOpenMongo(t *testing.T) {
 
 	inquirer := NewInquirer(mockDb)
 
-	docCh, err, count := inquirer.Inquire(testCollection, candidates)
+	docCh, count, err := inquirer.Inquire(testCollection, candidates)
 	assert.Error(t, err)
 	assert.Equal(t, "Mongo err", err.Error())
 	assert.Equal(t, 0, count)

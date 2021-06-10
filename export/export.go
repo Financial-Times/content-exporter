@@ -12,7 +12,7 @@ import (
 type Service struct {
 	sync.RWMutex
 	jobs                  map[string]*Job
-	NrOfConcurrentWorkers int
+	nrOfConcurrentWorkers int
 	*content.Exporter
 }
 
@@ -40,8 +40,8 @@ type Job struct {
 
 func NewFullExporter(nrOfWorkers int, exporter *content.Exporter) *Service {
 	return &Service{
-		jobs: make(map[string]*Job),
-		NrOfConcurrentWorkers: nrOfWorkers,
+		jobs:                  make(map[string]*Job),
+		nrOfConcurrentWorkers: nrOfWorkers,
 		Exporter:              exporter,
 	}
 }
@@ -74,6 +74,10 @@ func (fe *Service) AddJob(job *Job) {
 		fe.jobs[job.ID] = job
 		fe.Unlock()
 	}
+}
+
+func (fe *Service) GetWorkerCount() int {
+	return fe.nrOfConcurrentWorkers
 }
 
 func (job *Job) Copy() Job {

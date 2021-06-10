@@ -1,12 +1,12 @@
 package queue
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/kafka-client-go/kafka"
-	"errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -105,7 +105,7 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) error {
 		h.Cleanup.Do(func() {
 			close(h.received)
 		})
-		return errors.New("Service is shutdown")
+		return fmt.Errorf("service is shutdown")
 	}
 
 	tid := msg.Headers["X-Request-Id"]
@@ -117,7 +117,7 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) error {
 				h.Cleanup.Do(func() {
 					close(h.received)
 				})
-				return errors.New("Service is shutdown")
+				return fmt.Errorf("service is shutdown")
 			}
 			time.Sleep(time.Millisecond * 500)
 		}
@@ -135,8 +135,7 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) error {
 	case h.received <- n:
 	case <-n.Quit:
 		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.Uuid).Error("Notification handling is terminated")
-		return errors.New("Notification handling is terminated")
-
+		return fmt.Errorf("notification handling is terminated")
 	}
 	if h.ShutDownPrepared {
 		h.Cleanup.Do(func() {

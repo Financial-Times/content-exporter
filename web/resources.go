@@ -16,15 +16,23 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type Exporter interface {
+	GetJob(jobID string) (export.Job, error)
+	GetRunningJobs() []export.Job
+	AddJob(job *export.Job)
+	HandleContent(tid string, doc content.Stub) error
+	GetWorkerCount() int
+}
+
 type RequestHandler struct {
-	FullExporter             *export.Service
+	FullExporter             Exporter
 	Inquirer                 content.Inquirer
 	ContentRetrievalThrottle int
 	*export.Locker
 	IsIncExportEnabled bool
 }
 
-func NewRequestHandler(fullExporter *export.Service, inquirer content.Inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int) *RequestHandler {
+func NewRequestHandler(fullExporter Exporter, inquirer content.Inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int) *RequestHandler {
 	return &RequestHandler{
 		FullExporter:             fullExporter,
 		Inquirer:                 inquirer,
@@ -67,10 +75,27 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 		}
 	}
 	candidates := getCandidateUUIDs(request)
+	isFullExport := request.URL.Query().Get("fullExport") == "true"
+
+	if len(candidates) == 0 && !isFullExport {
+		log.Warn("Can't trigger a non-full export without ids")
+		sendFailedExportResponse(writer, "Pass a list of ids or trigger a full export flag")
+		return
+	}
+
+	if len(candidates) > 0 && isFullExport {
+		log.Warn("Can't trigger a full export with ids")
+		sendFailedExportResponse(writer, "Pass either a list of ids or the full export flag, not both")
+		return
+	}
 
 	jobID := uuid.New()
-	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.NrOfConcurrentWorkers, Status: export.STARTING, ContentRetrievalThrottle: handler.ContentRetrievalThrottle}
+	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.GetWorkerCount(), Status: export.STARTING, ContentRetrievalThrottle: handler.ContentRetrievalThrottle}
 	handler.FullExporter.AddJob(job)
+	response := map[string]string{
+		"ID":     job.ID,
+		"Status": string(job.Status),
+	}
 
 	go func() {
 		if handler.IsIncExportEnabled {
@@ -80,7 +105,7 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 			}()
 		}
 		log.Infoln("Calling mongo")
-		docs, err, count := handler.Inquirer.Inquire("content", candidates)
+		docs, count, err := handler.Inquirer.Inquire("content", candidates)
 		if err != nil {
 			msg := fmt.Sprintf(`Failed to read IDs from mongo for %v! "%v"`, "content", err.Error())
 			log.Info(msg)
@@ -98,12 +123,25 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 	writer.WriteHeader(http.StatusAccepted)
 	writer.Header().Add("Content-Type", "application/json")
 
-	err := json.NewEncoder(writer).Encode(job)
+	err := json.NewEncoder(writer).Encode(response)
 	if err != nil {
 		msg := fmt.Sprintf(`Failed to write job %v to response writer: "%v"`, job.ID, err)
 		log.Warn(msg)
 		fmt.Fprintf(writer, "{\"ID\": \"%v\"}", job.ID)
 		return
+	}
+}
+
+func sendFailedExportResponse(writer http.ResponseWriter, msg string) {
+	response := map[string]string{
+		"error": msg,
+	}
+
+	writer.WriteHeader(http.StatusBadRequest)
+	writer.Header().Add("Content-Type", "application/json")
+	err := json.NewEncoder(writer).Encode(response)
+	if err != nil {
+		log.Warn("Could not stringify failed export response")
 	}
 }
 
