@@ -13,7 +13,7 @@ import (
 )
 
 func NewComplexMessageMapper() MessageMapper {
-	return NewKafkaMessageMapper(regexp.MustCompile("^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\\.svc\\.ft\\.com(:\\d{2,5})?/(content|audio)/[\\w-]+.*$"))
+	return NewKafkaMessageMapper(regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`))
 }
 
 func testMapDeleteMessageSuccessfully(t *testing.T, ev event, testUUID string) {
