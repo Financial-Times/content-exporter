@@ -18,5 +18,5 @@ env:
     baseUrl: "http://api-policy-component:8080"
   kafka:
     topic: "PostPublicationEvents"
-  whitelist: "^http://(methode|wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\\.svc\\.ft\\.com(:\\d{2,5})?/(content|audio)/[\\w-]+.*$"
+  whitelist: "^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\\.svc\\.ft\\.com(:\\d{2,5})?/(content|audio)/[\\w-]+.*$"
   contentRetrievalThrottle: 500

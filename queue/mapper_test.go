@@ -13,7 +13,7 @@ import (
 )
 
 func NewComplexMessageMapper() MessageMapper {
-	return NewKafkaMessageMapper(regexp.MustCompile("^http://(methode|wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\\.svc\\.ft\\.com(:\\d{2,5})?/(content|audio)/[\\w-]+.*$"))
+	return NewKafkaMessageMapper(regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`))
 }
 
 func testMapDeleteMessageSuccessfully(t *testing.T, ev event, testUUID string) {
@@ -33,7 +33,7 @@ func testMapDeleteMessageSuccessfully(t *testing.T, ev event, testUUID string) {
 func TestKafkaMessageMapperMapDeleteMessageSuccessfully(t *testing.T) {
 	testUUID := uuid.New()
 	testMapDeleteMessageSuccessfully(t, event{
-		ContentURI: "http://methode-article-mapper.svc.ft.com/content/" + testUUID,
+		ContentURI: "http://upp-content-validator.svc.ft.com/content/" + testUUID,
 		Payload:    map[string]interface{}{"deleted": true}}, testUUID)
 }
 
@@ -48,7 +48,7 @@ func TestKafkaMessageMapperMapUpdateMessageSuccessfully(t *testing.T) {
 	messageMapper := NewComplexMessageMapper()
 	testUUID := uuid.New()
 	body, err := json.Marshal(event{
-		ContentURI: "http://methode-article-mapper.svc.ft.com/content/" + testUUID,
+		ContentURI: "http://upp-content-validator.svc.ft.com/content/" + testUUID,
 		Payload:    map[string]interface{}{"title": "This is a title", "type": "Article"}})
 	require.NoError(t, err)
 
@@ -66,7 +66,7 @@ func TestKafkaMessageMapperMapUpdateCanBeDistributedYes(t *testing.T) {
 	messageMapper := NewComplexMessageMapper()
 	testUUID := uuid.New()
 	body, err := json.Marshal(event{
-		ContentURI: "http://methode-article-mapper.svc.ft.com/content/" + testUUID,
+		ContentURI: "http://upp-content-validator.svc.ft.com/content/" + testUUID,
 		Payload:    map[string]interface{}{"title": "This is a title", "type": "Article", "canBeDistributed": "yes"}})
 	require.NoError(t, err)
 
@@ -86,7 +86,7 @@ func TestKafkaMessageMapperMapUpdateCanBeDistributedVerify(t *testing.T) {
 	messageMapper := NewComplexMessageMapper()
 	testUUID := uuid.New()
 	body, err := json.Marshal(event{
-		ContentURI: "http://methode-article-mapper.svc.ft.com/content/" + testUUID,
+		ContentURI: "http://upp-content-validator.svc.ft.com/content/" + testUUID,
 		Payload:    map[string]interface{}{"title": "This is a title", "type": "Article", "canBeDistributed": "verify"}})
 	require.NoError(t, err)
 
@@ -130,7 +130,7 @@ func TestKafkaMessageMapperMapNotificationNotInWhiteListError(t *testing.T) {
 func TestKafkaMessageMapperMapNotificationSyntheticError(t *testing.T) {
 	messageMapper := NewComplexMessageMapper()
 	body, err := json.Marshal(event{
-		ContentURI: "http://methode-article-mapper.svc.ft.com/content/",
+		ContentURI: "http://upp-content-validator.svc.ft.com/content/",
 		Payload:    map[string]interface{}{"title": "This is a title", "type": "Article"}})
 	require.NoError(t, err)
 
@@ -153,7 +153,7 @@ func TestKafkaMessageMapperMapNotificationMessageParseError(t *testing.T) {
 func TestKafkaMessageMapperMapNotificationInvalidPayloadType(t *testing.T) {
 	testUUID := uuid.New()
 	body, err := json.Marshal(event{
-		ContentURI: "http://methode-article-mapper.svc.ft.com/content/" + testUUID,
+		ContentURI: "http://upp-content-validator.svc.ft.com/content/" + testUUID,
 		Payload:    []interface{}{"title", "This is a title"}})
 	require.NoError(t, err)
 
