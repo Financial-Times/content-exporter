@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -77,6 +78,9 @@ func (tx *MongoTX) FindUUIDs(collectionID string, candidates []string) (Iterator
 	collection := tx.session.DB("upp-store").C(collectionID)
 
 	query, projection := findUUIDsQueryElements(candidates)
+	queryStr, _ := json.Marshal(query)
+	log.WithField("query", string(queryStr)).Info("Generated query")
+
 	find := collection.Find(query).Select(projection).Batch(100)
 
 	iter := find.Iter()
@@ -140,11 +144,14 @@ func findUUIDsQueryElements(candidates []string) (bson.M, bson.M) {
 			{"canBeDistributed": "yes"},
 			{"canBeDistributed": bson.M{"$exists": false}},
 		}},
-		{"$or": []bson.M{
+		{"$and": []bson.M{
 			{"type": "Article"},
-			{"body": bson.M{"$ne": nil}},
-			{"realtime": true},
-		}},
+			{"$or": []bson.M{
+				{"body": bson.M{"$ne": nil}},
+				{"bodyXML": bson.M{"$ne": nil}},
+			},
+			}},
+		},
 	}
 	if candidates != nil && len(candidates) != 0 {
 		andQuery = append(andQuery, bson.M{"uuid": bson.M{"$in": candidates}})
