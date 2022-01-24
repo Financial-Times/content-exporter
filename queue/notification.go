@@ -39,7 +39,7 @@ func NewKafkaContentNotificationHandler(exporter *content.Exporter, delayForNoti
 }
 
 func (h *KafkaContentNotificationHandler) HandleContentNotification(n *Notification) error {
-	logEntry := log.WithField("transaction_id", n.Tid).WithField("uuid", n.Stub.Uuid)
+	logEntry := log.WithField("transaction_id", n.Tid).WithField("uuid", n.Stub.UUID)
 	if n.EvType == UPDATE {
 		logEntry.Infof("UPDATE event received. Waiting configured delay - %v second(s)", h.Delay)
 
@@ -54,7 +54,7 @@ func (h *KafkaContentNotificationHandler) HandleContentNotification(n *Notificat
 		}
 	} else if n.EvType == DELETE {
 		logEntry.Info("DELETE event received")
-		if err := h.ContentExporter.Updater.Delete(n.Stub.Uuid, n.Tid); err != nil {
+		if err := h.ContentExporter.Updater.Delete(n.Stub.UUID, n.Tid); err != nil {
 			if err == content.ErrNotFound {
 				logEntry.Warnf("DELETE WARN: %v", err)
 				return nil

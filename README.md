@@ -13,6 +13,14 @@ The service is used for automated content exports. There are 3 types of export:
 
 An `INCREMENTAL export` is started at the startup and the service starts consuming messages from Kafka ONLY if this functionality is enabled - see configuration.
 
+## Deployments
+
+Currently, the service exists in two separate deployments:
+* A **regular content exporter** that processes only Articles for any export type (full, incremental or targeted)
+* A **full content exporter** that processes only Articles for full or targeted exports, but stores some additional types (matching the whitelist regex specified in the app configuration)
+
+Each deployment stores the exports in a different AWS S3 bucket.
+
 ## Installation
 
 Download the source code, dependencies and test dependencies:

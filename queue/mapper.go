@@ -13,6 +13,7 @@ import (
 )
 
 const canBeDistributedYes = "yes"
+const allowedContentType = "Article"
 
 // UUIDRegexp enables to check if a string matches a UUID
 var UUIDRegexp = regexp.MustCompile("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}")
@@ -23,10 +24,11 @@ type MessageMapper interface {
 
 type KafkaMessageMapper struct {
 	WhiteListRegex *regexp.Regexp
+	FullExporter   bool
 }
 
-func NewKafkaMessageMapper(whitelistR *regexp.Regexp) *KafkaMessageMapper {
-	return &KafkaMessageMapper{WhiteListRegex: whitelistR}
+func NewKafkaMessageMapper(whitelistR *regexp.Regexp, fullExp bool) *KafkaMessageMapper {
+	return &KafkaMessageMapper{WhiteListRegex: whitelistR, FullExporter: fullExp}
 }
 
 type event struct {
@@ -37,7 +39,7 @@ type event struct {
 func (e *event) mapNotification(tid string) (*Notification, error) {
 	UUID := UUIDRegexp.FindString(e.ContentURI)
 	if UUID == "" {
-		return nil, fmt.Errorf("ContentURI does not contain a UUID")
+		return nil, fmt.Errorf("contentURI does not contain a UUID")
 	}
 
 	payload, ok := e.Payload.(map[string]interface{})
@@ -57,11 +59,14 @@ func (e *event) mapNotification(tid string) (*Notification, error) {
 		*canBeDistributed = canBeDistributedValue.(string)
 	}
 
+	contentType, _ := payload["type"].(string)
+
 	return &Notification{
 		Stub: content.Stub{
-			Uuid:             UUID,
+			UUID:             UUID,
 			Date:             content.GetDateOrDefault(payload),
 			CanBeDistributed: canBeDistributed,
+			ContentType:      contentType,
 		},
 		EvType:     evType,
 		Terminator: export.NewTerminator(),
@@ -94,8 +99,15 @@ func (h *KafkaMessageMapper) MapNotification(msg kafka.FTMessage) (*Notification
 		return nil, err
 	}
 
+	if !h.FullExporter {
+		if n.Stub.ContentType != allowedContentType {
+			log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).WithField("type", n.Stub.ContentType).Info("Skipping event: Type not exportable.")
+			return nil, nil
+		}
+	}
+
 	if n.Stub.CanBeDistributed != nil && *n.Stub.CanBeDistributed != canBeDistributedYes {
-		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.Uuid).Warn("Skipping event: Content cannot be distributed.")
+		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).Warn("Skipping event: Content cannot be distributed.")
 		return nil, nil
 	}
 

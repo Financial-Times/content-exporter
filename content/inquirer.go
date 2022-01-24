@@ -58,8 +58,8 @@ func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan St
 func mapStub(result map[string]interface{}) (Stub, error) {
 	docUUID, ok := result["uuid"]
 	if !ok {
-		return Stub{}, fmt.Errorf("No uuid field found in iter result: %v", result)
+		return Stub{}, fmt.Errorf("no uuid field found in iter result: %v", result)
 	}
 
-	return Stub{Uuid: docUUID.(string), Date: GetDateOrDefault(result), CanBeDistributed: nil}, nil
+	return Stub{UUID: docUUID.(string), Date: GetDateOrDefault(result), CanBeDistributed: nil}, nil
 }

@@ -6,3 +6,4 @@ env:
     groupId: "k8s-content-exporter"
   s3Writer:
     baseUrl: "http://upp-exports-rw-s3:8080"
+  whitelist: "^http://(wordpress|upp)-(article|content)-(mapper|validator)\\.svc\\.ft\\.com(:\\d{2,5})?/content/[\\w-]+.*$"

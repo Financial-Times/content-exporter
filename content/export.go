@@ -8,8 +8,8 @@ import (
 const DefaultDate = "0000-00-00"
 
 type Stub struct {
-	Uuid, Date       string
-	CanBeDistributed *string
+	UUID, Date, ContentType string
+	CanBeDistributed        *string
 }
 
 type Exporter struct {
@@ -25,14 +25,14 @@ func NewExporter(fetcher Fetcher, updater Updater) *Exporter {
 }
 
 func (e *Exporter) HandleContent(tid string, doc Stub) error {
-	payload, err := e.Fetcher.GetContent(doc.Uuid, tid)
+	payload, err := e.Fetcher.GetContent(doc.UUID, tid)
 	if err != nil {
-		return fmt.Errorf("Error getting content for %v: %v", doc.Uuid, err)
+		return fmt.Errorf("error getting content for %v: %v", doc.UUID, err)
 	}
 
-	err = e.Updater.Upload(payload, tid, doc.Uuid, doc.Date)
+	err = e.Updater.Upload(payload, tid, doc.UUID, doc.Date)
 	if err != nil {
-		return fmt.Errorf("Error uploading content for %v: %v", doc.Uuid, err)
+		return fmt.Errorf("error uploading content for %v: %v", doc.UUID, err)
 	}
 	return nil
 }

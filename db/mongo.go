@@ -79,7 +79,7 @@ func (tx *MongoTX) FindUUIDs(collectionID string, candidates []string) (Iterator
 
 	query, projection := findUUIDsQueryElements(candidates)
 	queryStr, _ := json.Marshal(query)
-	log.WithField("query", string(queryStr)).Info("Generated query")
+	log.WithField("query", string(queryStr)).Debug("Generated query")
 
 	find := collection.Find(query).Select(projection).Batch(100)
 
