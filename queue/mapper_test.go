@@ -28,13 +28,12 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 	invalidPayloadBody, _ := json.Marshal(event{
 		ContentURI: "http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117",
 		Payload:    []interface{}{"type", "Article"}})
-
 	tests := []struct {
 		name                 string
 		fullExporter         bool
 		msg                  kafka.FTMessage
 		expectedNotification *Notification
-		expectError          bool
+		error                string
 	}{
 		{
 			name:         "Test that synthetic transaction ID will skip mapping",
@@ -53,7 +52,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Body:    "unmarshallable",
 			},
 			expectedNotification: nil,
-			expectError:          true,
+			error:                "invalid character 'u' looking for beginning of value",
 		},
 		{
 			name:         "Test that content type out of white list will skip mapping",
@@ -63,7 +62,6 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/audio/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{}),
 			},
 			expectedNotification: nil,
-			expectError:          false,
 		},
 		{
 			name:         "Test that content uri with invalid uuid will cause error",
@@ -73,7 +71,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/invalidUUID", map[string]interface{}{}),
 			},
 			expectedNotification: nil,
-			expectError:          true,
+			error:                "contentURI does not contain a UUID",
 		},
 		{
 			name:         "Test that invalid payload type will cause error",
@@ -83,7 +81,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Body:    string(invalidPayloadBody),
 			},
 			expectedNotification: nil,
-			expectError:          true,
+			error:                "invalid payload type: []interface {}",
 		},
 		{
 			name:         "Test that unexpected message body format will cause error",
@@ -93,7 +91,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Body:    "random-text",
 			},
 			expectedNotification: nil,
-			expectError:          true,
+			error:                "invalid character 'r' looking for beginning of value",
 		},
 		{
 			name:         "Test that unallowed content type will skip mapping",
@@ -105,7 +103,6 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				}),
 			},
 			expectedNotification: nil,
-			expectError:          false,
 		},
 		{
 			name:         "Test that missing content type will skip mapping",
@@ -115,7 +112,6 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{}),
 			},
 			expectedNotification: nil,
-			expectError:          false,
 		},
 		{
 			name:         "Test that content type of unexpected type will skip mapping",
@@ -127,7 +123,6 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				}),
 			},
 			expectedNotification: nil,
-			expectError:          false,
 		},
 		{
 			name:         "Test that canBeDistributed with value different than yes will skip mapping",
@@ -140,7 +135,6 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				}),
 			},
 			expectedNotification: nil,
-			expectError:          false,
 		},
 		{
 			name:         "Test that valid message will map to valid notification",
@@ -160,7 +154,6 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 					ContentType: "Article",
 				},
 			},
-			expectError: false,
 		},
 		{
 			name:         "Test that valid message will map to valid notification - delete event",
@@ -181,7 +174,6 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 					ContentType: "Article",
 				},
 			},
-			expectError: false,
 		},
 	}
 	for _, test := range tests {
@@ -195,10 +187,12 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				test.fullExporter,
 			}
 			n, err := mapper.MapNotification(test.msg)
-			if test.expectError {
+
+			if test.error != "" {
 				if err == nil {
 					t.Fatal("Expected mapping error, got nil")
 				}
+				assert.Contains(t, err.Error(), test.error)
 				return
 			}
 			if err != nil {
