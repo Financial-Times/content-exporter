@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/mgo.v2/bson"
@@ -107,7 +106,7 @@ func TestMongo_FindUUIDs(t *testing.T) {
 			name: "Test that content with irrelevant content type will not be fetched",
 			existingContent: []content{
 				{
-					uuid:    uuid.NewUUID().String(),
+					uuid:    "a164336a-7e3e-48ff-a3fe-e1bf1c8c0d4e",
 					cType:   "LiveBlog",
 					bodyXML: stringAsPtr("<body> Simple body </body>"),
 				},
@@ -118,7 +117,7 @@ func TestMongo_FindUUIDs(t *testing.T) {
 			name: "Test that content with relevant content type and no body or bodyXML will not be fetched",
 			existingContent: []content{
 				{
-					uuid:  uuid.NewUUID().String(),
+					uuid:  "2c1d77f1-c087-495b-bcd7-0680844d622b",
 					cType: "Article",
 				},
 			},
@@ -128,19 +127,7 @@ func TestMongo_FindUUIDs(t *testing.T) {
 			name: "Test that content with relevant content type, existing bodyXML and distribution flag set to no will not be fetched",
 			existingContent: []content{
 				{
-					uuid:             uuid.NewUUID().String(),
-					cType:            "Article",
-					bodyXML:          stringAsPtr("<body> Simple body </body>"),
-					canBeDistributed: stringAsPtr("no"),
-				},
-			},
-			expectedResultUUIDs: emptyResult,
-		},
-		{
-			name: "Test that content with relevant content type, existing bodyXML and distribution flag set to no will not be fetched",
-			existingContent: []content{
-				{
-					uuid:             uuid.NewUUID().String(),
+					uuid:             "fd1f2c02-711f-4cc2-941e-0f03a62b8406",
 					cType:            "Article",
 					bodyXML:          stringAsPtr("<body> Simple body </body>"),
 					canBeDistributed: stringAsPtr("no"),
@@ -217,12 +204,10 @@ func TestMongo_FindUUIDs(t *testing.T) {
 	}
 	mongo := startMongo(t)
 	defer mongo.Close()
+
 	tx, err := mongo.Open()
-	if err != nil {
-		t.Fatal("Failed to open mongo")
-	}
+	require.NoError(t, err)
 	defer tx.Close()
-	assert.NoError(t, err)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
