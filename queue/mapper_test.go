@@ -13,9 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var exporterRegex = regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`)
-var fullExporterRegex = regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`)
-
 func generateRequestBody(contentURI string, payload interface{}) string {
 	body, err := json.Marshal(event{
 		ContentURI: contentURI,
@@ -29,15 +26,17 @@ func generateRequestBody(contentURI string, payload interface{}) string {
 
 func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 	tests := []struct {
-		name                 string
-		fullExporter         bool
-		msg                  kafka.FTMessage
-		expectedNotification *Notification
-		error                string
+		name                        string
+		contentOriginAllowlistRegex *regexp.Regexp
+		allowedContentTypes         []string
+		msg                         kafka.FTMessage
+		expectedNotification        *Notification
+		error                       string
 	}{
 		{
-			name:         "Test that synthetic transaction ID will skip mapping",
-			fullExporter: true,
+			name:                        "Test that synthetic transaction ID will skip mapping",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Audio", "Article", "LiveBlogPost", "LiveBlogPackage", "Content"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "SYNTH_REQ_MON1"},
 				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{}),
@@ -45,8 +44,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			expectedNotification: nil,
 		},
 		{
-			name:         "Test that unmarshallable message body will cause errors",
-			fullExporter: true,
+			name:                        "Test that unmarshallable message body will cause errors",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Audio", "Article", "LiveBlogPost", "LiveBlogPackage", "Content"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body:    "unmarshallable",
@@ -55,8 +55,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			error:                "invalid character 'u' looking for beginning of value",
 		},
 		{
-			name:         "Test that content type out of white list will skip mapping",
-			fullExporter: false,
+			name:                        "Test that content type out of white list will skip mapping",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/audio/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{}),
@@ -64,8 +65,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			expectedNotification: nil,
 		},
 		{
-			name:         "Test that content uri with invalid uuid will cause error",
-			fullExporter: true,
+			name:                        "Test that content uri with invalid uuid will cause error",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Audio", "Article", "LiveBlogPost", "LiveBlogPackage", "Content"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/invalidUUID", map[string]interface{}{}),
@@ -74,8 +76,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			error:                "contentURI does not contain a UUID",
 		},
 		{
-			name:         "Test that invalid payload type will cause error",
-			fullExporter: true,
+			name:                        "Test that invalid payload type will cause error",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Audio", "Article", "LiveBlogPost", "LiveBlogPackage", "Content"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", []interface{}{"type", "Article"}),
@@ -84,8 +87,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			error:                "invalid payload type: []interface {}",
 		},
 		{
-			name:         "Test that non-article content type is processed properly",
-			fullExporter: true,
+			name:                        "Test that non-article content type is processed properly",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Audio", "Article", "LiveBlogPost", "LiveBlogPackage", "Content"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
@@ -102,8 +106,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			},
 		},
 		{
-			name:         "Test that unallowed content type will skip mapping",
-			fullExporter: false,
+			name:                        "Test that unallowed content type will skip mapping",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
@@ -113,8 +118,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			expectedNotification: nil,
 		},
 		{
-			name:         "Test that missing content type will skip mapping",
-			fullExporter: false,
+			name:                        "Test that missing content type will skip mapping",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{}),
@@ -122,8 +128,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			expectedNotification: nil,
 		},
 		{
-			name:         "Test that content type of unexpected type will skip mapping",
-			fullExporter: false,
+			name:                        "Test that content type of unexpected type will skip mapping",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
@@ -133,8 +140,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			expectedNotification: nil,
 		},
 		{
-			name:         "Test that canBeDistributed with value different than yes will skip mapping",
-			fullExporter: false,
+			name:                        "Test that canBeDistributed with value different than yes will skip mapping",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
@@ -145,8 +153,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			expectedNotification: nil,
 		},
 		{
-			name:         "Test that valid message will map to valid notification",
-			fullExporter: false,
+			name:                        "Test that valid message will map to valid notification",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
@@ -165,8 +174,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			},
 		},
 		{
-			name:         "Test that valid message will map to valid notification - delete event",
-			fullExporter: false,
+			name:                        "Test that valid message will map to valid notification - delete event",
+			contentOriginAllowlistRegex: regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`),
+			allowedContentTypes:         []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
@@ -188,16 +198,8 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			regex := exporterRegex
-			if test.fullExporter {
-				regex = fullExporterRegex
-			}
-			mapper := KafkaMessageMapper{
-				regex,
-				test.fullExporter,
-			}
+			mapper := NewKafkaMessageMapper(test.contentOriginAllowlistRegex, test.allowedContentTypes)
 			n, err := mapper.MapNotification(test.msg)
-
 			if test.error != "" {
 				require.EqualError(t, err, test.error)
 				return

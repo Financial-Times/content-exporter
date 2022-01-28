@@ -7,3 +7,4 @@ env:
   s3Writer:
     baseUrl: "http://upp-exports-rw-s3:8080"
   contentOriginAllowlist: "^http://(wordpress|upp)-(article|content)-(mapper|validator)\\.svc\\.ft\\.com(:\\d{2,5})?/content/[\\w-]+.*$"
+  allowedContentTypes: "Article"

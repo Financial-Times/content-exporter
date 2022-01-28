@@ -13,7 +13,6 @@ import (
 )
 
 const canBeDistributedYes = "yes"
-const allowedContentType = "Article"
 
 // UUIDRegexp enables to check if a string matches a UUID
 var UUIDRegexp = regexp.MustCompile("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}")
@@ -24,11 +23,16 @@ type MessageMapper interface {
 
 type KafkaMessageMapper struct {
 	ContentOriginAllowlistRegex *regexp.Regexp
-	FullExporter                bool
+	AllowedContentTypes         map[string]bool
 }
 
-func NewKafkaMessageMapper(contentOriginAllowlist *regexp.Regexp, fullExp bool) *KafkaMessageMapper {
-	return &KafkaMessageMapper{ContentOriginAllowlistRegex: contentOriginAllowlist, FullExporter: fullExp}
+func NewKafkaMessageMapper(contentOriginAllowlist *regexp.Regexp, allowedContentTypes []string) *KafkaMessageMapper {
+	allowedTypes := make(map[string]bool)
+	for _, v := range allowedContentTypes {
+		allowedTypes[v] = true
+	}
+
+	return &KafkaMessageMapper{ContentOriginAllowlistRegex: contentOriginAllowlist, AllowedContentTypes: allowedTypes}
 }
 
 type event struct {
@@ -99,11 +103,9 @@ func (h *KafkaMessageMapper) MapNotification(msg kafka.FTMessage) (*Notification
 		return nil, err
 	}
 
-	if !h.FullExporter {
-		if n.Stub.ContentType != allowedContentType {
-			log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).WithField("type", n.Stub.ContentType).Info("Skipping event: Type not exportable.")
-			return nil, nil
-		}
+	if !h.AllowedContentTypes[n.Stub.ContentType] {
+		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).WithField("type", n.Stub.ContentType).Info("Skipping event: Type not exportable.")
+		return nil, nil
 	}
 
 	if n.Stub.CanBeDistributed != nil && *n.Stub.CanBeDistributed != canBeDistributedYes {

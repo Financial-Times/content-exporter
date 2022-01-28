@@ -154,11 +154,11 @@ func main() {
 		Desc:   "Maximum goroutines to allocate for kafka message handling",
 		EnvVar: "MAX_GO_ROUTINES",
 	})
-	isFullExporter := app.Bool(cli.BoolOpt{
-		Name:   "is-full-exporter",
-		Value:  false,
-		Desc:   "Flag representing whether current deployment is of full content exporter.",
-		EnvVar: "IS_FULL_EXPORTER",
+	allowedContentTypes := app.Strings(cli.StringsOpt{
+		Name:   "allowed-content-types",
+		Value:  []string{},
+		Desc:   `Comma-separated list of ContentTypes`,
+		EnvVar: "ALLOWED_CONTENT_TYPES",
 	})
 
 	app.Before = func() {
@@ -215,7 +215,7 @@ func main() {
 		if !(*isIncExportEnabled) {
 			log.Warn("INCREMENTAL export is not enabled")
 		} else {
-			kafkaListener = prepareIncrementalExport(logDebug, consumerAddrs, consumerGroupID, topic, contentOriginAllowlist, isFullExporter, exporter, delayForNotification, locker, maxGoRoutines)
+			kafkaListener = prepareIncrementalExport(logDebug, consumerAddrs, consumerGroupID, topic, contentOriginAllowlist, *allowedContentTypes, exporter, delayForNotification, locker, maxGoRoutines)
 			go kafkaListener.ConsumeMessages()
 		}
 		go func() {
@@ -247,7 +247,7 @@ func main() {
 		return
 	}
 }
-func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGroupID *string, topic *string, contentOriginAllowlist *string, fullExporter *bool, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
+func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGroupID *string, topic *string, contentOriginAllowlist *string, allowedContentTypes []string, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
 	consumerGroupConfig := kafka.DefaultConsumerConfig()
 	consumerGroupConfig.ChannelBufferSize = 10
 	if *logDebug {
@@ -272,7 +272,7 @@ func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGro
 	}
 
 	kafkaMessageHandler := queue.NewKafkaContentNotificationHandler(exporter, *delayForNotification)
-	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowlistR, *fullExporter)
+	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowlistR, allowedContentTypes)
 	kafkaListener := queue.NewKafkaListener(messageConsumer, kafkaMessageHandler, kafkaMessageMapper, locker, *maxGoRoutines)
 
 	return kafkaListener
