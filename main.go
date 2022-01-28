@@ -179,7 +179,7 @@ func main() {
 		} else {
 			log.SetLevel(log.InfoLevel)
 		}
-		log.WithField("event", "service_started").WithField("service_name", *appName).WithField("fullExporter", *isFullExporter).Info("Service started")
+		log.WithField("event", "service_started").WithField("app-name", *appName).Info("Service started")
 
 		mongo := db.NewMongoDatabase(*mongos, 100)
 
