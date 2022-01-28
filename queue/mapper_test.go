@@ -7,13 +7,16 @@ import (
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/kafka-client-go/kafka"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-const exporterRegex = `^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`
-const fullExporterRegex = `^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`
+var exporterRegex = regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(mapper|validator)\.svc\.ft\.com(:\\d{2,5})?/content/[\w-]+.*$`)
+var fullExporterRegex = regexp.MustCompile(`^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\.svc\.ft\.com(:\d{2,5})?/(content|audio)/[\w-]+.*$`)
 
-func generateRequestBody(contentURI string, payload map[string]interface{}) string {
+func generateRequestBody(contentURI string, payload interface{}) string {
 	body, err := json.Marshal(event{
 		ContentURI: contentURI,
 		Payload:    payload,
@@ -25,9 +28,6 @@ func generateRequestBody(contentURI string, payload map[string]interface{}) stri
 }
 
 func TestKafkaMessageMapper_MapNotification(t *testing.T) {
-	invalidPayloadBody, _ := json.Marshal(event{
-		ContentURI: "http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117",
-		Payload:    []interface{}{"type", "Article"}})
 	tests := []struct {
 		name                 string
 		fullExporter         bool
@@ -78,20 +78,28 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			fullExporter: true,
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body:    string(invalidPayloadBody),
+				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", []interface{}{"type", "Article"}),
 			},
 			expectedNotification: nil,
 			error:                "invalid payload type: []interface {}",
 		},
 		{
-			name:         "Test that unexpected message body format will cause error",
+			name:         "Test that non-article content type is processed properly",
 			fullExporter: true,
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body:    "random-text",
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
+					"type": "LiveBlogPackage",
+				}),
 			},
-			expectedNotification: nil,
-			error:                "invalid character 'r' looking for beginning of value",
+			expectedNotification: &Notification{
+				Tid:    "tid_1234",
+				EvType: UPDATE,
+				Stub: content.Stub{
+					UUID:        "811e0591-5c71-4457-b8eb-8c22cf093117",
+					ContentType: "LiveBlogPackage",
+				},
+			},
 		},
 		{
 			name:         "Test that unallowed content type will skip mapping",
@@ -150,8 +158,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Tid:    "tid_1234",
 				EvType: UPDATE,
 				Stub: content.Stub{
-					UUID:        "811e0591-5c71-4457-b8eb-8c22cf093117",
-					ContentType: "Article",
+					UUID:             "811e0591-5c71-4457-b8eb-8c22cf093117",
+					ContentType:      "Article",
+					CanBeDistributed: func(s string) *string { return &s }("yes"),
 				},
 			},
 		},
@@ -170,8 +179,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Tid:    "tid_1234",
 				EvType: DELETE,
 				Stub: content.Stub{
-					UUID:        "811e0591-5c71-4457-b8eb-8c22cf093117",
-					ContentType: "Article",
+					UUID:             "811e0591-5c71-4457-b8eb-8c22cf093117",
+					ContentType:      "Article",
+					CanBeDistributed: func(s string) *string { return &s }("yes"),
 				},
 			},
 		},
@@ -183,28 +193,20 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				regex = fullExporterRegex
 			}
 			mapper := KafkaMessageMapper{
-				regexp.MustCompile(regex),
+				regex,
 				test.fullExporter,
 			}
 			n, err := mapper.MapNotification(test.msg)
 
 			if test.error != "" {
-				if err == nil {
-					t.Fatal("Expected mapping error, got nil")
-				}
-				assert.Contains(t, err.Error(), test.error)
+				require.EqualError(t, err, test.error)
 				return
 			}
-			if err != nil {
-				t.Fatalf("Didn't expect mapping error, got %v", err)
-			}
-			if n == nil && test.expectedNotification == nil {
-				return
-			}
-			assert.Equal(t, test.expectedNotification.Tid, n.Tid)
-			assert.Equal(t, test.expectedNotification.EvType, n.EvType)
-			assert.Equal(t, test.expectedNotification.Stub.UUID, n.Stub.UUID)
-			assert.Equal(t, test.expectedNotification.Stub.ContentType, n.Stub.ContentType)
+
+			require.NoError(t, err)
+
+			cmpOpts := cmpopts.IgnoreFields(Notification{}, "Stub.Date", "Terminator")
+			assert.Truef(t, cmp.Equal(test.expectedNotification, n, cmpOpts), "Mapped notification differs from expected:\n%s", cmp.Diff(test.expectedNotification, n, cmpOpts))
 		})
 	}
 }
