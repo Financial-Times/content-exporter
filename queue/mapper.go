@@ -23,12 +23,12 @@ type MessageMapper interface {
 }
 
 type KafkaMessageMapper struct {
-	WhiteListRegex *regexp.Regexp
-	FullExporter   bool
+	ContentOriginAllowlistRegex *regexp.Regexp
+	FullExporter                bool
 }
 
-func NewKafkaMessageMapper(whitelistR *regexp.Regexp, fullExp bool) *KafkaMessageMapper {
-	return &KafkaMessageMapper{WhiteListRegex: whitelistR, FullExporter: fullExp}
+func NewKafkaMessageMapper(contentOriginAllowlist *regexp.Regexp, fullExp bool) *KafkaMessageMapper {
+	return &KafkaMessageMapper{ContentOriginAllowlistRegex: contentOriginAllowlist, FullExporter: fullExp}
 }
 
 type event struct {
@@ -88,8 +88,8 @@ func (h *KafkaMessageMapper) MapNotification(msg kafka.FTMessage) (*Notification
 		return nil, nil
 	}
 
-	if !h.WhiteListRegex.MatchString(pubEvent.ContentURI) {
-		log.WithField("transaction_id", tid).WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: It is not in the whitelist.")
+	if !h.ContentOriginAllowlistRegex.MatchString(pubEvent.ContentURI) {
+		log.WithField("transaction_id", tid).WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: It is not in the Content Origin allowlist.")
 		return nil, nil
 	}
 

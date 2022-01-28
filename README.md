@@ -17,7 +17,7 @@ An `INCREMENTAL export` is started at the startup and the service starts consumi
 
 Currently, the service exists in two separate deployments:
 * A **regular content exporter** that processes only Articles for any export type (full, incremental or targeted)
-* A **full content exporter** that processes only Articles for full or targeted exports, but stores some additional types (matching the whitelist regex specified in the app configuration)
+* A **full content exporter** that processes only Articles for full or targeted exports, but stores some additional types (matching the contentOriginAllowlist regex specified in the app configuration)
 
 Each deployment stores the exports in a different AWS S3 bucket.
 
@@ -59,7 +59,7 @@ Usage: content-exporter [OPTIONS]
           --group-id=""                                              Kafka qroup id used for message consuming. ($GROUP_ID)
           --topic=""                                                 Kafka topic to read from. ($TOPIC)
           --delayForNotification=30                                  Delay in seconds for notifications to being handled ($DELAY_FOR_NOTIFICATION)
-          --whitelist=""                                             The whitelist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$ ($WHITELIST)
+          --contentOriginAllowlist=""                                             The contentOriginAllowlist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$ ($CONTENT_ORIGIN_ALLOWLIST)
           --logDebug=false                                           Flag to switch debug logging ($LOG_DEBUG)
           --maxGoRoutines=100                                        Maximum goroutines to allocate for kafka message handling ($MAX_GO_ROUTINES)
           --contentRetrievalThrottle=0                               Delay in milliseconds between content retrieval calls

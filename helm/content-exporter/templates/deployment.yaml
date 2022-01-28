@@ -64,8 +64,8 @@ spec:
           value: "{{ .Values.env.kafka.groupId }}"
         - name: TOPIC
           value: "{{ .Values.env.kafka.topic }}"
-        - name: WHITELIST
-          value: {{ .Values.env.whitelist }}
+        - name: CONTENT_ORIGIN_ALLOWLIST
+          value: {{ .Values.env.contentOriginAllowlist }}
         - name: CONTENT_RETRIEVAL_THROTTLE
           value: "{{ .Values.env.contentRetrievalThrottle }}"
         ports:

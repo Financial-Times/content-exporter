@@ -131,10 +131,10 @@ func main() {
 		Desc:   "Delay in milliseconds between content retrieval calls",
 		EnvVar: "CONTENT_RETRIEVAL_THROTTLE",
 	})
-	whitelist := app.String(cli.StringOpt{
-		Name:   "whitelist",
-		Desc:   `The whitelist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$`,
-		EnvVar: "WHITELIST",
+	contentOriginAllowlist := app.String(cli.StringOpt{
+		Name:   "contentOriginAllowlist",
+		Desc:   `The Content Origin allowlist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$`,
+		EnvVar: "CONTENT_ORIGIN_ALLOWLIST",
 	})
 	logDebug := app.Bool(cli.BoolOpt{
 		Name:   "logDebug",
@@ -166,10 +166,10 @@ func main() {
 			app.PrintHelp()
 			log.Fatalf("Mongo connection is not set correctly: %s", err.Error())
 		}
-		_, err := regexp.Compile(*whitelist)
+		_, err := regexp.Compile(*contentOriginAllowlist)
 		if err != nil {
 			app.PrintHelp()
-			log.WithError(err).Fatal("Whitelist regex MUST compile!")
+			log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
 		}
 	}
 
@@ -215,7 +215,7 @@ func main() {
 		if !(*isIncExportEnabled) {
 			log.Warn("INCREMENTAL export is not enabled")
 		} else {
-			kafkaListener = prepareIncrementalExport(logDebug, consumerAddrs, consumerGroupID, topic, whitelist, isFullExporter, exporter, delayForNotification, locker, maxGoRoutines)
+			kafkaListener = prepareIncrementalExport(logDebug, consumerAddrs, consumerGroupID, topic, contentOriginAllowlist, isFullExporter, exporter, delayForNotification, locker, maxGoRoutines)
 			go kafkaListener.ConsumeMessages()
 		}
 		go func() {
@@ -247,7 +247,7 @@ func main() {
 		return
 	}
 }
-func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGroupID *string, topic *string, whitelist *string, fullExporter *bool, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
+func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGroupID *string, topic *string, contentOriginAllowlist *string, fullExporter *bool, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
 	consumerGroupConfig := kafka.DefaultConsumerConfig()
 	consumerGroupConfig.ChannelBufferSize = 10
 	if *logDebug {
@@ -266,13 +266,13 @@ func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGro
 	if err != nil {
 		log.WithError(err).Fatal("Cannot create Kafka client")
 	}
-	whitelistR, err := regexp.Compile(*whitelist)
+	contentOriginAllowlistR, err := regexp.Compile(*contentOriginAllowlist)
 	if err != nil {
-		log.WithError(err).Fatal("Whitelist regex MUST compile!")
+		log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
 	}
 
 	kafkaMessageHandler := queue.NewKafkaContentNotificationHandler(exporter, *delayForNotification)
-	kafkaMessageMapper := queue.NewKafkaMessageMapper(whitelistR, *fullExporter)
+	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowlistR, *fullExporter)
 	kafkaListener := queue.NewKafkaListener(messageConsumer, kafkaMessageHandler, kafkaMessageMapper, locker, *maxGoRoutines)
 
 	return kafkaListener

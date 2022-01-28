@@ -7,5 +7,5 @@ env:
   s3Writer:
     baseUrl: "http://upp-full-exports-rw-s3:8080"
   xPolicyHeaderValues: "INTERNAL_UNSTABLE"
-  whitelist: "^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\\.svc\\.ft\\.com(:\\d{2,5})?/(content|audio)/[\\w-]+.*$"
+  contentOriginAllowlist: "^http://(wordpress|upp)-(article|content)-(transformer|mapper|validator)(-pr|-iw)?(-uk-.*)?\\.svc\\.ft\\.com(:\\d{2,5})?/(content|audio)/[\\w-]+.*$"
   fullExporter: true
