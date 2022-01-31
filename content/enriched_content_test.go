@@ -136,7 +136,7 @@ func TestEnrichedContentFetcherGetContentWithForbiddenError(t *testing.T) {
 	_, err := fetcher.GetContent(testUUID, "tid_1234")
 	assert.Error(t, err)
 	mockServer.AssertExpectations(t)
-	assert.Equal(t, "Access to content is forbidden. Skipping", err.Error())
+	assert.Equal(t, "access to content is forbidden. Skipping", err.Error())
 }
 
 func TestEnrichedContentFetcherGetContentWithErrorOnNewRequest(t *testing.T) {

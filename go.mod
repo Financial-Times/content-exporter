@@ -10,6 +10,7 @@ require (
 	github.com/Financial-Times/service-status-go v0.0.0-20160323111542-3f5199736a3d
 	github.com/Financial-Times/transactionid-utils-go v0.2.0
 	github.com/Shopify/sarama v1.24.1
+	github.com/google/go-cmp v0.3.0
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/gorilla/mux v1.4.1-0.20170704074345-ac112f7d75a0
 	github.com/hashicorp/go-version v0.0.0-20170202080759-03c5bf6be031 // indirect

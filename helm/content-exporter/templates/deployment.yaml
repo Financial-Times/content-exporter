@@ -33,6 +33,8 @@ spec:
         image: "{{ .Values.image.repository }}:{{ .Chart.Version }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         env:
+        - name: APP_NAME
+          value: "{{ .Values.service.name }}"
         - name: ENRICHED_CONTENT_BASE_URL
           value: "{{ .Values.env.enrichedContent.baseUrl }}"
         - name: ENRICHED_CONTENT_HEALTH_URL
@@ -43,6 +45,8 @@ spec:
           value: "{{ .Values.env.s3Writer.baseUrl }}/__gtg"
         - name: X_POLICY_HEADER_VALUES
           value: "{{ .Values.env.xPolicyHeaderValues }}"
+        - name: ALLOWED_CONTENT_TYPES
+          value: "{{ .Values.env.allowedContentTypes }}"
         - name: MONGO_CONNECTION
           valueFrom:
             configMapKeyRef:
@@ -62,8 +66,8 @@ spec:
           value: "{{ .Values.env.kafka.groupId }}"
         - name: TOPIC
           value: "{{ .Values.env.kafka.topic }}"
-        - name: WHITELIST
-          value: {{ .Values.env.whitelist }}
+        - name: CONTENT_ORIGIN_ALLOWLIST
+          value: {{ .Values.env.contentOriginAllowlist }}
         - name: CONTENT_RETRIEVAL_THROTTLE
           value: "{{ .Values.env.contentRetrievalThrottle }}"
         ports:

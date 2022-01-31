@@ -63,7 +63,7 @@ func (fe *Service) GetJob(jobID string) (Job, error) {
 	defer fe.RUnlock()
 	job, ok := fe.jobs[jobID]
 	if !ok {
-		return Job{}, fmt.Errorf("Job %v not found", jobID)
+		return Job{}, fmt.Errorf("job %v not found", jobID)
 	}
 	return job.Copy(), nil
 }
@@ -114,9 +114,9 @@ func (job *Job) RunFullExport(tid string, export func(string, content.Stub) erro
 			defer job.wg.Done()
 			time.Sleep(time.Duration(job.ContentRetrievalThrottle) * time.Millisecond)
 			if err := export(tid, doc); err != nil {
-				log.WithField("transaction_id", tid).WithField("uuid", doc.Uuid).Error(err)
+				log.WithField("transaction_id", tid).WithField("uuid", doc.UUID).Error(err)
 				job.Lock()
-				job.Failed = append(job.Failed, doc.Uuid)
+				job.Failed = append(job.Failed, doc.UUID)
 				job.Unlock()
 			}
 			<-worker

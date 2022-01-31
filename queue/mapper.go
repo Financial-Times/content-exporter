@@ -22,11 +22,17 @@ type MessageMapper interface {
 }
 
 type KafkaMessageMapper struct {
-	WhiteListRegex *regexp.Regexp
+	ContentOriginAllowlistRegex *regexp.Regexp
+	AllowedContentTypes         map[string]bool
 }
 
-func NewKafkaMessageMapper(whitelistR *regexp.Regexp) *KafkaMessageMapper {
-	return &KafkaMessageMapper{WhiteListRegex: whitelistR}
+func NewKafkaMessageMapper(contentOriginAllowlist *regexp.Regexp, allowedContentTypes []string) *KafkaMessageMapper {
+	allowedTypes := make(map[string]bool)
+	for _, v := range allowedContentTypes {
+		allowedTypes[v] = true
+	}
+
+	return &KafkaMessageMapper{ContentOriginAllowlistRegex: contentOriginAllowlist, AllowedContentTypes: allowedTypes}
 }
 
 type event struct {
@@ -37,7 +43,7 @@ type event struct {
 func (e *event) mapNotification(tid string) (*Notification, error) {
 	UUID := UUIDRegexp.FindString(e.ContentURI)
 	if UUID == "" {
-		return nil, fmt.Errorf("ContentURI does not contain a UUID")
+		return nil, fmt.Errorf("contentURI does not contain a UUID")
 	}
 
 	payload, ok := e.Payload.(map[string]interface{})
@@ -57,11 +63,14 @@ func (e *event) mapNotification(tid string) (*Notification, error) {
 		*canBeDistributed = canBeDistributedValue.(string)
 	}
 
+	contentType, _ := payload["type"].(string)
+
 	return &Notification{
 		Stub: content.Stub{
-			Uuid:             UUID,
+			UUID:             UUID,
 			Date:             content.GetDateOrDefault(payload),
 			CanBeDistributed: canBeDistributed,
+			ContentType:      contentType,
 		},
 		EvType:     evType,
 		Terminator: export.NewTerminator(),
@@ -83,8 +92,8 @@ func (h *KafkaMessageMapper) MapNotification(msg kafka.FTMessage) (*Notification
 		return nil, nil
 	}
 
-	if !h.WhiteListRegex.MatchString(pubEvent.ContentURI) {
-		log.WithField("transaction_id", tid).WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: It is not in the whitelist.")
+	if !h.ContentOriginAllowlistRegex.MatchString(pubEvent.ContentURI) {
+		log.WithField("transaction_id", tid).WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: It is not in the Content Origin allowlist.")
 		return nil, nil
 	}
 
@@ -94,8 +103,13 @@ func (h *KafkaMessageMapper) MapNotification(msg kafka.FTMessage) (*Notification
 		return nil, err
 	}
 
+	if !h.AllowedContentTypes[n.Stub.ContentType] {
+		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).WithField("type", n.Stub.ContentType).Info("Skipping event: Type not exportable.")
+		return nil, nil
+	}
+
 	if n.Stub.CanBeDistributed != nil && *n.Stub.CanBeDistributed != canBeDistributedYes {
-		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.Uuid).Warn("Skipping event: Content cannot be distributed.")
+		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).Warn("Skipping event: Content cannot be distributed.")
 		return nil, nil
 	}
 

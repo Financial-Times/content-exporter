@@ -41,7 +41,7 @@ func (u *S3Updater) Delete(uuid, tid string) error {
 			return ErrNotFound
 		}
 		body, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("Content RW S3 returned HTTP %v with message: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("content RW S3 returned HTTP %v with message: %s", resp.StatusCode, string(body))
 	}
 
 	return nil

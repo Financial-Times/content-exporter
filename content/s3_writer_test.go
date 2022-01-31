@@ -161,7 +161,7 @@ func TestS3UpdaterDeleteContentErrorResponse(t *testing.T) {
 
 	err := updater.Delete(testUUID, "tid_1234")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Content RW S3 returned HTTP 503")
+	assert.Contains(t, err.Error(), "content RW S3 returned HTTP 503")
 	mockServer.AssertExpectations(t)
 }
 

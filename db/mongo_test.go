@@ -6,24 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/mgo.v2/bson"
 )
-
-func startMongo(t *testing.T) Service {
-	if testing.Short() {
-		t.Skip("Mongo integration for long tests only.")
-	}
-
-	mongoURL := os.Getenv("MONGO_TEST_URL")
-	if strings.TrimSpace(mongoURL) == "" {
-		t.Fatal("Please set the environment variable MONGO_TEST_URL to run mongo integration tests (e.g. MONGO_TEST_URL=localhost:27017). Alternatively, run `go test -short` to skip them.")
-	}
-
-	return NewMongoDatabase(mongoURL, 30000)
-}
 
 func TestCreateDB(t *testing.T) {
 	mongo := NewMongoDatabase("test-url", 30000)
@@ -68,169 +54,17 @@ func TestDBCheckHealth(t *testing.T) {
 	assert.Equal(t, "OK", output)
 }
 
-func TestFindUUIDsWithOnlyType(t *testing.T) {
-	mongo := startMongo(t)
-	defer mongo.Close()
-	tx, err := mongo.Open()
-	defer tx.Close()
-	assert.NoError(t, err)
+func startMongo(t *testing.T) Service {
+	if testing.Short() {
+		t.Skip("Mongo integration for long tests only.")
+	}
 
-	testUUID := uuid.NewUUID().String()
-	t.Log("Test uuid to use", testUUID)
-	testContent := make(map[string]interface{})
+	mongoURL := os.Getenv("MONGO_TEST_URL")
+	if strings.TrimSpace(mongoURL) == "" {
+		t.Fatal("Please set the environment variable MONGO_TEST_URL to run mongo integration tests (e.g. MONGO_TEST_URL=localhost:27017). Alternatively, run `go test -short` to skip them.")
+	}
 
-	testContent["uuid"] = testUUID
-	testContent["type"] = "Article"
-	insertTestContent(t, mongo.(*MongoDB), testContent)
-	defer cleanupTestContent(t, mongo.(*MongoDB), testUUID)
-
-	iter, count, err := tx.FindUUIDs("testing", nil)
-	require.NoError(t, err)
-	defer iter.Close()
-	require.NoError(t, iter.Err())
-	require.Equal(t, 1, count)
-
-	var result map[string]interface{}
-	assert.True(t, iter.Next(&result))
-	assert.Equal(t, testUUID, result["uuid"].(string))
-}
-
-func TestFindUUIDsWithOnlyBody(t *testing.T) {
-	mongo := startMongo(t)
-	defer mongo.Close()
-	tx, err := mongo.Open()
-	defer tx.Close()
-	assert.NoError(t, err)
-
-	testUUID := uuid.NewUUID().String()
-	t.Log("Test uuid to use", testUUID)
-	testContent := make(map[string]interface{})
-
-	testContent["uuid"] = testUUID
-	testContent["body"] = "some text"
-	insertTestContent(t, mongo.(*MongoDB), testContent)
-	defer cleanupTestContent(t, mongo.(*MongoDB), testUUID)
-
-	iter, count, err := tx.FindUUIDs("testing", nil)
-	require.NoError(t, err)
-	defer iter.Close()
-	require.NoError(t, iter.Err())
-	require.Equal(t, 1, count)
-
-	var result map[string]interface{}
-	assert.True(t, iter.Next(&result))
-	assert.Equal(t, testUUID, result["uuid"].(string))
-}
-
-func TestFindUUIDsWithOnlyRealtime(t *testing.T) {
-	mongo := startMongo(t)
-	defer mongo.Close()
-	tx, err := mongo.Open()
-	defer tx.Close()
-	assert.NoError(t, err)
-
-	testUUID := uuid.NewUUID().String()
-	t.Log("Test uuid to use", testUUID)
-	testContent := make(map[string]interface{})
-
-	testContent["uuid"] = testUUID
-	testContent["realtime"] = true
-	insertTestContent(t, mongo.(*MongoDB), testContent)
-	defer cleanupTestContent(t, mongo.(*MongoDB), testUUID)
-
-	iter, count, err := tx.FindUUIDs("testing", nil)
-	require.NoError(t, err)
-	defer iter.Close()
-	require.NoError(t, iter.Err())
-	require.Equal(t, 1, count)
-
-	var result map[string]interface{}
-	assert.True(t, iter.Next(&result))
-	assert.Equal(t, testUUID, result["uuid"].(string))
-}
-
-func TestFindUUIDsWithCanBeDistributedYes(t *testing.T) {
-	mongo := startMongo(t)
-	defer mongo.Close()
-	tx, err := mongo.Open()
-	defer tx.Close()
-	assert.NoError(t, err)
-
-	testUUID := uuid.NewUUID().String()
-	t.Log("Test uuid to use", testUUID)
-	testContent := make(map[string]interface{})
-
-	testContent["uuid"] = testUUID
-	testContent["type"] = "Article"
-	testContent["canBeDistributed"] = "yes"
-	insertTestContent(t, mongo.(*MongoDB), testContent)
-	defer cleanupTestContent(t, mongo.(*MongoDB), testUUID)
-
-	iter, count, err := tx.FindUUIDs("testing", nil)
-	require.NoError(t, err)
-	defer iter.Close()
-	require.NoError(t, iter.Err())
-	require.Equal(t, 1, count)
-
-	var result map[string]interface{}
-	assert.True(t, iter.Next(&result))
-	assert.Equal(t, testUUID, result["uuid"].(string))
-}
-
-func TestFindUUIDsWithoutValidData(t *testing.T) {
-	mongo := startMongo(t)
-	defer mongo.Close()
-	tx, err := mongo.Open()
-	defer tx.Close()
-	assert.NoError(t, err)
-
-	testUUID := uuid.NewUUID().String()
-	t.Log("Test uuid to use", testUUID)
-	testContent := make(map[string]interface{})
-
-	testContent["uuid"] = testUUID
-	testContent["aProperty"] = "some text"
-	insertTestContent(t, mongo.(*MongoDB), testContent)
-	defer cleanupTestContent(t, mongo.(*MongoDB), testUUID)
-
-	iter, count, err := tx.FindUUIDs("testing", nil)
-	require.NoError(t, err)
-	defer iter.Close()
-	require.NoError(t, iter.Err())
-	require.Equal(t, 0, count)
-
-	var result map[string]interface{}
-	assert.False(t, iter.Next(&result))
-}
-
-func TestFindUUIDsWithCandidate(t *testing.T) {
-	mongo := startMongo(t)
-	defer mongo.Close()
-	tx, err := mongo.Open()
-	defer tx.Close()
-	assert.NoError(t, err)
-
-	testUUID1 := uuid.NewUUID().String()
-	testUUID2 := uuid.NewUUID().String()
-	t.Log("Test uuids to use: ", testUUID1, testUUID2)
-	testContent := make(map[string]interface{})
-
-	testContent["uuid"] = testUUID1
-	testContent["type"] = "Article"
-	insertTestContent(t, mongo.(*MongoDB), testContent)
-	testContent["uuid"] = testUUID2
-	insertTestContent(t, mongo.(*MongoDB), testContent)
-	defer cleanupTestContent(t, mongo.(*MongoDB), testUUID1, testUUID2)
-
-	iter, count, err := tx.FindUUIDs("testing", []string{testUUID1})
-	require.NoError(t, err)
-	defer iter.Close()
-	require.NoError(t, iter.Err())
-	require.Equal(t, 1, count)
-
-	var result map[string]interface{}
-	assert.True(t, iter.Next(&result))
-	assert.Equal(t, testUUID1, result["uuid"].(string))
+	return NewMongoDatabase(mongoURL, 30000)
 }
 
 func insertTestContent(t *testing.T, mongo *MongoDB, testContent map[string]interface{}) {
@@ -247,5 +81,167 @@ func cleanupTestContent(t *testing.T, mongo *MongoDB, testUUIDs ...string) {
 	for _, testUUID := range testUUIDs {
 		err := session.DB("upp-store").C("testing").Remove(bson.M{"uuid": testUUID})
 		assert.NoError(t, err)
+	}
+}
+
+func TestMongo_FindUUIDs(t *testing.T) {
+	emptyResult := make([]string, 0)
+	type content struct {
+		uuid             string
+		cType            string
+		canBeDistributed *string
+		body             *string
+		bodyXML          *string
+	}
+	stringAsPtr := func(s string) *string {
+		return &s
+	}
+	tests := []struct {
+		name                string
+		existingContent     []content
+		candidates          []string
+		expectedResultUUIDs []string
+	}{
+		{
+			name: "Test that content with irrelevant content type will not be fetched",
+			existingContent: []content{
+				{
+					uuid:    "a164336a-7e3e-48ff-a3fe-e1bf1c8c0d4e",
+					cType:   "LiveBlog",
+					bodyXML: stringAsPtr("<body> Simple body </body>"),
+				},
+			},
+			expectedResultUUIDs: emptyResult,
+		},
+		{
+			name: "Test that content with relevant content type and no body or bodyXML will not be fetched",
+			existingContent: []content{
+				{
+					uuid:  "2c1d77f1-c087-495b-bcd7-0680844d622b",
+					cType: "Article",
+				},
+			},
+			expectedResultUUIDs: emptyResult,
+		},
+		{
+			name: "Test that content with relevant content type, existing bodyXML and distribution flag set to no will not be fetched",
+			existingContent: []content{
+				{
+					uuid:             "fd1f2c02-711f-4cc2-941e-0f03a62b8406",
+					cType:            "Article",
+					bodyXML:          stringAsPtr("<body> Simple body </body>"),
+					canBeDistributed: stringAsPtr("no"),
+				},
+			},
+			expectedResultUUIDs: emptyResult,
+		},
+		{
+			name: "Test that content with relevant content type, existing bodyXML and valid distribution flag will be fetched",
+			existingContent: []content{
+				{
+					uuid:             "test-uuid-1",
+					cType:            "Article",
+					bodyXML:          stringAsPtr("<body> Simple body </body>"),
+					canBeDistributed: stringAsPtr("yes"),
+				},
+			},
+			expectedResultUUIDs: []string{"test-uuid-1"},
+		},
+		{
+			name: "Test that content with relevant content type, existing body and valid distribution flag will be fetched",
+			existingContent: []content{
+				{
+					uuid:             "test-uuid-2",
+					cType:            "Article",
+					body:             stringAsPtr("<body> Simple body </body>"),
+					canBeDistributed: stringAsPtr("yes"),
+				},
+			},
+			expectedResultUUIDs: []string{"test-uuid-2"},
+		},
+		{
+			name: "Test that content with relevant content type, existing body and non-existing distribution flag will be fetched",
+			existingContent: []content{
+				{
+					uuid:  "test-uuid-3",
+					cType: "Article",
+					body:  stringAsPtr("<body> Simple body </body>"),
+				},
+			},
+			expectedResultUUIDs: []string{"test-uuid-3"},
+		},
+		{
+			name: "Test that valid content will be fetched when it is among candidates",
+			existingContent: []content{
+				{
+					uuid:             "test-uuid-4",
+					cType:            "Article",
+					body:             stringAsPtr("<body> Simple body </body>"),
+					canBeDistributed: stringAsPtr("yes"),
+				},
+				{
+					uuid:             "test-uuid-5",
+					cType:            "Article",
+					bodyXML:          stringAsPtr("<body> Simple body </body>"),
+					canBeDistributed: stringAsPtr("yes"),
+				},
+				{
+					uuid:             "test-uuid-6",
+					cType:            "Article",
+					bodyXML:          stringAsPtr("<body> Another simple body </body>"),
+					canBeDistributed: stringAsPtr("yes"),
+				},
+				{
+					uuid:             "test-uuid-7",
+					cType:            "LiveBlog",
+					bodyXML:          stringAsPtr("<body> Another simple body </body>"),
+					canBeDistributed: stringAsPtr("yes"),
+				},
+			},
+			candidates:          []string{"test-uuid-4", "test-uuid-6"},
+			expectedResultUUIDs: []string{"test-uuid-4", "test-uuid-6"},
+		},
+	}
+	mongo := startMongo(t)
+	defer mongo.Close()
+
+	tx, err := mongo.Open()
+	require.NoError(t, err)
+	defer tx.Close()
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			uuids := make([]string, 0)
+			for _, content := range test.existingContent {
+				uuids = append(uuids, content.uuid)
+				toInsert := make(map[string]interface{})
+				toInsert["uuid"] = content.uuid
+				toInsert["type"] = content.cType
+				toInsert["body"] = content.body
+				toInsert["bodyXML"] = content.bodyXML
+				if content.canBeDistributed != nil {
+					toInsert["canBeDistributed"] = content.canBeDistributed
+				}
+				insertTestContent(t, mongo.(*MongoDB), toInsert)
+			}
+			defer cleanupTestContent(t, mongo.(*MongoDB), uuids...)
+
+			iter, count, err := tx.FindUUIDs("testing", test.candidates)
+			require.NoError(t, err)
+			defer func(iter Iterator) {
+				err := iter.Close()
+				if err != nil {
+					t.Logf("Failed to close iterator")
+				}
+			}(iter)
+			require.NoError(t, iter.Err())
+			require.Equal(t, len(test.expectedResultUUIDs), count)
+
+			var resultEntry map[string]interface{}
+			for iter.Next(&resultEntry) {
+				resUUID := resultEntry["uuid"].(string)
+				assert.Contains(t, test.expectedResultUUIDs, resUUID)
+			}
+		})
 	}
 }

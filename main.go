@@ -131,10 +131,10 @@ func main() {
 		Desc:   "Delay in milliseconds between content retrieval calls",
 		EnvVar: "CONTENT_RETRIEVAL_THROTTLE",
 	})
-	whitelist := app.String(cli.StringOpt{
-		Name:   "whitelist",
-		Desc:   `The whitelist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$`,
-		EnvVar: "WHITELIST",
+	contentOriginAllowlist := app.String(cli.StringOpt{
+		Name:   "contentOriginAllowlist",
+		Desc:   `The Content Origin allowlist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$`,
+		EnvVar: "CONTENT_ORIGIN_ALLOWLIST",
 	})
 	logDebug := app.Bool(cli.BoolOpt{
 		Name:   "logDebug",
@@ -154,16 +154,22 @@ func main() {
 		Desc:   "Maximum goroutines to allocate for kafka message handling",
 		EnvVar: "MAX_GO_ROUTINES",
 	})
+	allowedContentTypes := app.Strings(cli.StringsOpt{
+		Name:   "allowed-content-types",
+		Value:  []string{},
+		Desc:   `Comma-separated list of ContentTypes`,
+		EnvVar: "ALLOWED_CONTENT_TYPES",
+	})
 
 	app.Before = func() {
 		if err := checkMongoURLs(*mongos); err != nil {
 			app.PrintHelp()
 			log.Fatalf("Mongo connection is not set correctly: %s", err.Error())
 		}
-		_, err := regexp.Compile(*whitelist)
+		_, err := regexp.Compile(*contentOriginAllowlist)
 		if err != nil {
 			app.PrintHelp()
-			log.WithError(err).Fatal("Whitelist regex MUST compile!")
+			log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
 		}
 	}
 
@@ -173,7 +179,7 @@ func main() {
 		} else {
 			log.SetLevel(log.InfoLevel)
 		}
-		log.WithField("event", "service_started").WithField("service_name", *appName).Info("Service started")
+		log.WithField("event", "service_started").WithField("app-name", *appName).Info("Service started")
 
 		mongo := db.NewMongoDatabase(*mongos, 100)
 
@@ -209,7 +215,7 @@ func main() {
 		if !(*isIncExportEnabled) {
 			log.Warn("INCREMENTAL export is not enabled")
 		} else {
-			kafkaListener = prepareIncrementalExport(logDebug, consumerAddrs, consumerGroupID, topic, whitelist, exporter, delayForNotification, locker, maxGoRoutines)
+			kafkaListener = prepareIncrementalExport(logDebug, consumerAddrs, consumerGroupID, topic, contentOriginAllowlist, *allowedContentTypes, exporter, delayForNotification, locker, maxGoRoutines)
 			go kafkaListener.ConsumeMessages()
 		}
 		go func() {
@@ -241,7 +247,7 @@ func main() {
 		return
 	}
 }
-func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGroupID *string, topic *string, whitelist *string, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
+func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGroupID *string, topic *string, contentOriginAllowlist *string, allowedContentTypes []string, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
 	consumerGroupConfig := kafka.DefaultConsumerConfig()
 	consumerGroupConfig.ChannelBufferSize = 10
 	if *logDebug {
@@ -260,13 +266,13 @@ func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGro
 	if err != nil {
 		log.WithError(err).Fatal("Cannot create Kafka client")
 	}
-	whitelistR, err := regexp.Compile(*whitelist)
+	contentOriginAllowlistR, err := regexp.Compile(*contentOriginAllowlist)
 	if err != nil {
-		log.WithError(err).Fatal("Whitelist regex MUST compile!")
+		log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
 	}
 
 	kafkaMessageHandler := queue.NewKafkaContentNotificationHandler(exporter, *delayForNotification)
-	kafkaMessageMapper := queue.NewKafkaMessageMapper(whitelistR)
+	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowlistR, allowedContentTypes)
 	kafkaListener := queue.NewKafkaListener(messageConsumer, kafkaMessageHandler, kafkaMessageMapper, locker, *maxGoRoutines)
 
 	return kafkaListener

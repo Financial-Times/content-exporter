@@ -134,7 +134,7 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) error {
 	select {
 	case h.received <- n:
 	case <-n.Quit:
-		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.Uuid).Error("Notification handling is terminated")
+		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).Error("Notification handling is terminated")
 		return fmt.Errorf("notification handling is terminated")
 	}
 	if h.ShutDownPrepared {
@@ -159,7 +159,7 @@ func (h *KafkaListener) handleNotifications() {
 		go func(notification *Notification) {
 			defer func() { <-h.worker }()
 			if err := h.ContentNotificationHandler.HandleContentNotification(notification); err != nil {
-				log.WithField("transaction_id", notification.Tid).WithField("uuid", notification.Stub.Uuid).WithError(err).Error("Failed notification handling")
+				log.WithField("transaction_id", notification.Tid).WithField("uuid", notification.Stub.UUID).WithError(err).Error("Failed notification handling")
 			}
 			h.Lock()
 			delete(h.pending, notification.Tid)

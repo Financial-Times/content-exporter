@@ -100,7 +100,7 @@ waitLoop:
 			if !open {
 				break waitLoop
 			}
-			assert.Equal(t, testUUID, doc.Uuid)
+			assert.Equal(t, testUUID, doc.UUID)
 			assert.Equal(t, DefaultDate, doc.Date)
 
 		case <-time.After(3 * time.Second):
