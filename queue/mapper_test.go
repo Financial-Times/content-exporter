@@ -180,18 +180,16 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
 				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type":             "Article",
-					"canBeDistributed": "yes",
-					"deleted":          true,
+					"type":    "Article",
+					"deleted": true,
 				}),
 			},
 			expectedNotification: &Notification{
 				Tid:    "tid_1234",
 				EvType: DELETE,
 				Stub: content.Stub{
-					UUID:             "811e0591-5c71-4457-b8eb-8c22cf093117",
-					ContentType:      "Article",
-					CanBeDistributed: func(s string) *string { return &s }("yes"),
+					UUID:        "811e0591-5c71-4457-b8eb-8c22cf093117",
+					ContentType: "Article",
 				},
 			},
 		},
