@@ -36,4 +36,3 @@ runbooks:
   systemCodes:
     # paths are relative to root, omitting ./ (case-insensitive)
     content-exporter: runbooks/content-exporter-runbook.md
-    full-content-exporter: runbooks/full-content-exporter-runbook.md
