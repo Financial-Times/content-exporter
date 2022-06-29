@@ -89,7 +89,7 @@ func (u *mockUpdater) Upload(content []byte, tid, uuid, date string) error {
 	return u.err
 }
 
-func (u *mockUpdater) Delete(uuid, tid string) error {
+func (u *mockUpdater) Delete(_, _ string) error {
 	panic("should not be called")
 }
 

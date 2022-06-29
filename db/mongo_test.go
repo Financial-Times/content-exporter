@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/mgo.v2/bson"
@@ -38,7 +40,11 @@ func TestDBCloses(t *testing.T) {
 	tx.Close()
 	mongo.Close()
 	assert.Panics(t, func() {
-		mongo.(*MongoDB).session.Ping()
+		err := mongo.(*MongoDB).session.Ping()
+		if err != nil {
+			log.WithError(err)
+			return
+		}
 	})
 }
 

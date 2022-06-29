@@ -1,12 +1,11 @@
 package queue
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/Financial-Times/content-exporter/export"
-	"github.com/Financial-Times/kafka-client-go/kafka"
+	"github.com/Financial-Times/kafka-client-go/v3"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -27,9 +26,9 @@ type KafkaListener struct {
 	worker                     chan struct{}
 }
 
-func NewKafkaListener(messageConsumer kafka.Consumer, notificationHandler *KafkaContentNotificationHandler, messageMapper *KafkaMessageMapper, locker *export.Locker, maxGoRoutines int) *KafkaListener {
+func NewKafkaListener(messageConsumer *kafka.Consumer, notificationHandler *KafkaContentNotificationHandler, messageMapper *KafkaMessageMapper, locker *export.Locker, maxGoRoutines int) *KafkaListener {
 	return &KafkaListener{
-		messageConsumer:            messageConsumer,
+		messageConsumer:            *messageConsumer,
 		Locker:                     locker,
 		received:                   make(chan *Notification, 1),
 		pending:                    make(map[string]*Notification),
@@ -59,14 +58,19 @@ func (h *KafkaListener) pauseConsuming() {
 }
 
 func (h *KafkaListener) ConsumeMessages() {
-	h.messageConsumer.StartListening(h.HandleMessage)
+	h.messageConsumer.Start(h.HandleMessage)
 	go h.handleNotifications()
 
 	defer func() {
 		h.Terminator.ShutDownPrepared = true
 		h.TerminatePendingNotifications()
 	}()
-	defer h.messageConsumer.Shutdown()
+	defer func(messageConsumer *kafka.Consumer) {
+		err := messageConsumer.Close()
+		if err != nil {
+			log.WithError(err).Error("Consumer did not close properly")
+		}
+	}(&h.messageConsumer)
 
 	for {
 		select {
@@ -100,12 +104,13 @@ func (h *KafkaListener) StopConsumingMessages() {
 	}
 }
 
-func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) error {
+func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) {
 	if h.ShutDownPrepared {
 		h.Cleanup.Do(func() {
 			close(h.received)
 		})
-		return fmt.Errorf("service is shutdown")
+		log.Errorf("service is shutdown")
+		return
 	}
 
 	tid := msg.Headers["X-Request-Id"]
@@ -117,7 +122,8 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) error {
 				h.Cleanup.Do(func() {
 					close(h.received)
 				})
-				return fmt.Errorf("service is shutdown")
+				log.Errorf("service is shutdown")
+				return
 			}
 			time.Sleep(time.Millisecond * 500)
 		}
@@ -125,8 +131,9 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) error {
 	}
 
 	n, err := h.MessageMapper.MapNotification(msg)
-	if n == nil {
-		return err
+	if err != nil {
+		log.WithError(err)
+		return
 	}
 	h.Lock()
 	h.pending[n.Tid] = n
@@ -135,14 +142,13 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) error {
 	case h.received <- n:
 	case <-n.Quit:
 		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).Error("Notification handling is terminated")
-		return fmt.Errorf("notification handling is terminated")
+		return
 	}
 	if h.ShutDownPrepared {
 		h.Cleanup.Do(func() {
 			close(h.received)
 		})
 	}
-	return err
 }
 
 func (h *KafkaListener) handleNotifications() {
@@ -182,6 +188,13 @@ func (h *KafkaListener) TerminatePendingNotifications() {
 func (h *KafkaListener) CheckHealth() (string, error) {
 	if err := h.messageConsumer.ConnectivityCheck(); err != nil {
 		return "Kafka is not good to go.", err
+	}
+	return "Kafka is good to go.", nil
+}
+
+func (h *KafkaListener) MonitorCheck() (string, error) {
+	if err := h.messageConsumer.MonitorCheck(); err != nil {
+		return "Kafka is lagging.", err
 	}
 	return "Kafka is good to go.", nil
 }
