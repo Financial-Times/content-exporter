@@ -33,7 +33,7 @@ func (tx *mockTX) FindUUIDs(collectionID string, candidates []string) (db.Iterat
 	return args.Get(0).(db.Iterator), args.Int(1), args.Error(2)
 }
 
-func (tx *mockTX) Ping(ctx context.Context) error {
+func (tx *mockTX) Ping(_ context.Context) error {
 	panic("implement me")
 }
 

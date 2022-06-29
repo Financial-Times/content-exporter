@@ -30,7 +30,7 @@ func (e *exporterMock) GetRunningJobs() []export.Job {
 	}
 	panic("exporterMock.GetRunningJobs is not implemented")
 }
-func (e *exporterMock) AddJob(job *export.Job) {
+func (e *exporterMock) AddJob(_ *export.Job) {
 	// Function doesn't return anything so a facade would do
 }
 func (e *exporterMock) HandleContent(tid string, doc content.Stub) error {

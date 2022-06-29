@@ -69,7 +69,7 @@ Options:
     --topic=""                                                 Kafka topic to read from. ($TOPIC)
     --delayForNotification=30                                  Delay in seconds for notifications to being handled ($DELAY_FOR_NOTIFICATION)
     --contentOriginAllowlist=""                                The contentOriginAllowlist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$ ($CONTENT_ORIGIN_ALLOWLIST)
-    --logDebug=false                                           Flag to switch debug logging ($LOG_DEBUG)
+    --logLevel="DEBUG/INFO/WARN/ERROR"                         Parameter for setting logging level. 
     --maxGoRoutines=100                                        Maximum goroutines to allocate for kafka message handling ($MAX_GO_ROUTINES)
     --contentRetrievalThrottle=0                               Delay in milliseconds between content retrieval calls
 ```

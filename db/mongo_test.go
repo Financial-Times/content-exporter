@@ -38,7 +38,10 @@ func TestDBCloses(t *testing.T) {
 	tx.Close()
 	mongo.Close()
 	assert.Panics(t, func() {
-		mongo.(*MongoDB).session.Ping()
+		err := mongo.(*MongoDB).session.Ping()
+		if err != nil {
+			return
+		}
 	})
 }
 
