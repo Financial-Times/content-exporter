@@ -3,8 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-	standardlog "log"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +13,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Financial-Times/go-logger/v2"
+	log "github.com/sirupsen/logrus"
+
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/db"
 	"github.com/Financial-Times/content-exporter/export"
@@ -22,29 +23,22 @@ import (
 	"github.com/Financial-Times/content-exporter/web"
 	health "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
-	"github.com/Financial-Times/kafka-client-go/kafka"
+	"github.com/Financial-Times/kafka-client-go/v3"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
 
-	"github.com/Shopify/sarama"
 	"github.com/gorilla/mux"
 	cli "github.com/jawher/mow.cli"
-	metrics "github.com/rcrowley/go-metrics"
+	"github.com/rcrowley/go-metrics"
 	"github.com/sethgrid/pester"
-	log "github.com/sirupsen/logrus"
 )
 
-const appDescription = "Exports content from DB and sends to S3"
-
-func init() {
-	f := &log.JSONFormatter{
-		TimestampFormat: time.RFC3339Nano,
-	}
-
-	log.SetFormatter(f)
-}
+const (
+	serviceName    = "content-exporter"
+	appDescription = "Exports content from DB and sends to S3"
+)
 
 func main() {
-	app := cli.App("content-exporter", appDescription)
+	app := cli.App(serviceName, appDescription)
 
 	appSystemCode := app.String(cli.StringOpt{
 		Name:   "app-system-code",
@@ -136,11 +130,11 @@ func main() {
 		Desc:   `The Content Origin allowlist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$`,
 		EnvVar: "CONTENT_ORIGIN_ALLOWLIST",
 	})
-	logDebug := app.Bool(cli.BoolOpt{
-		Name:   "logDebug",
-		Value:  false,
-		Desc:   "Flag to switch debug logging",
-		EnvVar: "LOG_DEBUG",
+	logLevel := app.String(cli.StringOpt{
+		Name:   "logLevel",
+		Value:  "INFO",
+		Desc:   "Logging level (DEBUG, INFO, WARN, ERROR)",
+		EnvVar: "LOG_LEVEL",
 	})
 	isIncExportEnabled := app.Bool(cli.BoolOpt{
 		Name:   "is-inc-export-enabled",
@@ -174,21 +168,19 @@ func main() {
 	}
 
 	app.Action = func() {
-		if *logDebug {
-			log.SetLevel(log.DebugLevel)
-		} else {
-			log.SetLevel(log.InfoLevel)
-		}
+
+		log := logger.NewUPPLogger(serviceName, *logLevel)
+
 		log.WithField("event", "service_started").WithField("app-name", *appName).Info("Service started")
 
 		mongo := db.NewMongoDatabase(*mongos, 100)
 
 		tr := &http.Transport{
 			MaxIdleConnsPerHost: 128,
-			Dial: (&net.Dialer{
+			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
-			}).Dial,
+			}).DialContext,
 		}
 		c := &http.Client{
 			Transport: tr,
@@ -212,31 +204,28 @@ func main() {
 		fullExporter := export.NewFullExporter(20, exporter)
 		locker := export.NewLocker()
 		var kafkaListener *queue.KafkaListener
-		if !(*isIncExportEnabled) {
-			log.Warn("INCREMENTAL export is not enabled")
-		} else {
-			kafkaListener = prepareIncrementalExport(logDebug, consumerAddrs, consumerGroupID, topic, contentOriginAllowlist, *allowedContentTypes, exporter, delayForNotification, locker, maxGoRoutines)
+		if *isIncExportEnabled {
+			kafkaListener = prepareIncrementalExport(log, consumerAddrs, consumerGroupID, topic, contentOriginAllowlist, *allowedContentTypes, exporter, delayForNotification, locker, maxGoRoutines)
 			go kafkaListener.ConsumeMessages()
+			defer kafkaListener.StopConsumingMessages()
+		} else {
+			log.Warn("INCREMENTAL export is not enabled")
 		}
-		go func() {
-			healthService := newHealthService(
-				&healthConfig{
-					appSystemCode:          *appSystemCode,
-					appName:                *appName,
-					port:                   *port,
-					db:                     mongo,
-					enrichedContentFetcher: fetcher,
-					s3Uploader:             uploader,
-					queueHandler:           kafkaListener,
-				})
 
-			serveEndpoints(*appSystemCode, *appName, *port, web.NewRequestHandler(fullExporter, content.NewMongoInquirer(mongo), locker, *isIncExportEnabled, *contentRetrievalThrottle), healthService)
-		}()
+		healthService := newHealthService(
+			&healthConfig{
+				appSystemCode:          *appSystemCode,
+				appName:                *appName,
+				port:                   *port,
+				db:                     mongo,
+				enrichedContentFetcher: fetcher,
+				s3Uploader:             uploader,
+				queueHandler:           kafkaListener,
+			})
+
+		go serveEndpoints(*appSystemCode, *appName, *port, web.NewRequestHandler(fullExporter, content.NewMongoInquirer(mongo), locker, *isIncExportEnabled, *contentRetrievalThrottle), healthService)
 
 		waitForSignal()
-		if *isIncExportEnabled {
-			kafkaListener.StopConsumingMessages()
-		}
 		log.Info("Gracefully shut down")
 
 	}
@@ -247,32 +236,25 @@ func main() {
 		return
 	}
 }
-func prepareIncrementalExport(logDebug *bool, consumerAddrs *string, consumerGroupID *string, topic *string, contentOriginAllowlist *string, allowedContentTypes []string, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
-	consumerGroupConfig := kafka.DefaultConsumerConfig()
-	consumerGroupConfig.ChannelBufferSize = 10
-	if *logDebug {
-		sarama.Logger = standardlog.New(os.Stdout, "[sarama] ", standardlog.LstdFlags)
-	} else {
-		consumerGroupConfig.Zookeeper.Logger = standardlog.New(ioutil.Discard, "", 0)
-	}
 
-	kc := kafka.Config{
-		ZookeeperConnectionString: *consumerAddrs,
-		ConsumerGroup:             *consumerGroupID,
-		Topics:                    []string{*topic},
-		ConsumerGroupConfig:       consumerGroupConfig,
+func prepareIncrementalExport(logger *logger.UPPLogger, consumerAddrs *string, consumerGroupID *string, topic *string, contentOriginAllowlist *string, allowedContentTypes []string, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
+	config := kafka.ConsumerConfig{
+		BrokersConnectionString: *consumerAddrs,
+		ConsumerGroup:           *consumerGroupID,
+		ConnectionRetryInterval: time.Minute,
 	}
-	messageConsumer, err := kafka.NewConsumer(kc)
-	if err != nil {
-		log.WithError(err).Fatal("Cannot create Kafka client")
+	topics := []*kafka.Topic{
+		kafka.NewTopic(*topic),
 	}
-	contentOriginAllowlistR, err := regexp.Compile(*contentOriginAllowlist)
+	messageConsumer := kafka.NewConsumer(config, topics, logger)
+
+	contentOriginAllowListRegex, err := regexp.Compile(*contentOriginAllowlist)
 	if err != nil {
 		log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
 	}
 
 	kafkaMessageHandler := queue.NewKafkaContentNotificationHandler(exporter, *delayForNotification)
-	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowlistR, allowedContentTypes)
+	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
 	kafkaListener := queue.NewKafkaListener(messageConsumer, kafkaMessageHandler, kafkaMessageMapper, locker, *maxGoRoutines)
 
 	return kafkaListener

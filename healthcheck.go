@@ -33,10 +33,10 @@ type healthConfig struct {
 func newHealthService(config *healthConfig) *healthService {
 	tr := &http.Transport{
 		MaxIdleConnsPerHost: 10,
-		Dial: (&net.Dialer{
+		DialContext: (&net.Dialer{
 			Timeout:   3 * time.Second,
 			KeepAlive: 3 * time.Second,
-		}).Dial,
+		}).DialContext,
 	}
 	httpClient := &http.Client{
 		Transport: tr,
@@ -49,7 +49,7 @@ func newHealthService(config *healthConfig) *healthService {
 		service.S3WriterCheck(),
 	}
 	if config.queueHandler != nil {
-		service.checks = append(service.checks, service.KafkaCheck())
+		service.checks = append(service.checks, service.KafkaCheck(), service.KafkaMonitor())
 	}
 	return service
 }
@@ -99,6 +99,16 @@ func (service *healthService) KafkaCheck() health.Check {
 		Severity:         2,
 		TechnicalSummary: "The service is unable to connect to Kafka. INCREMENTAL export won't work because of this",
 		Checker:          service.config.queueHandler.CheckHealth,
+	}
+}
+
+func (service *healthService) KafkaMonitor() health.Check {
+	return health.Check{
+		Name:             "KafkaClientLag",
+		BusinessImpact:   "No Business Impact.",
+		Severity:         3,
+		TechnicalSummary: "Messages awaiting handling exceed the configured lag tolerance. Check if Kafka consumer is stuck.",
+		Checker:          service.config.queueHandler.MonitorCheck,
 	}
 }
 
