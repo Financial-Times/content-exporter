@@ -90,7 +90,7 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 	}
 
 	jobID := uuid.New()
-	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.GetWorkerCount(), Status: export.STARTING, ContentRetrievalThrottle: handler.ContentRetrievalThrottle}
+	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.GetWorkerCount(), Status: export.STARTING, ContentRetrievalThrottle: handler.ContentRetrievalThrottle, FullExport: isFullExport}
 	handler.FullExporter.AddJob(job)
 	response := map[string]string{
 		"ID":     job.ID,

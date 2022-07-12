@@ -221,7 +221,7 @@ func main() {
 				enrichedContentFetcher: fetcher,
 				s3Uploader:             uploader,
 				queueHandler:           kafkaListener,
-			})
+			}, fullExporter)
 
 		go serveEndpoints(*appSystemCode, *appName, *port, web.NewRequestHandler(fullExporter, content.NewMongoInquirer(mongo), locker, *isIncExportEnabled, *contentRetrievalThrottle), healthService)
 
