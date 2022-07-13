@@ -6,5 +6,5 @@ env:
     groupId: "content-exporter"
   s3Writer:
     baseUrl: "http://upp-exports-rw-s3:8080"
-  contentOriginAllowlist: "^http://upp-(article|content)-validator\\.svc\\.ft\\.com(:\\d{2,5})?/content/[\\w-]+.*$"
+  contentOriginAllowlist: "^http://upp-content-validator\\.svc\\.ft\\.com(:\\d{2,5})?/content/[\\w-]+.*$"
   allowedContentTypes: "Article"

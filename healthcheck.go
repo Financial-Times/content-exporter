@@ -124,7 +124,7 @@ func (service *healthService) KafkaMonitor() health.Check {
 
 func (service *healthService) customKafkaMonitorCheck() (string, error) {
 	status, err := service.config.queueHandler.MonitorCheck()
-	if !service.statusManager.IsFullExportRunning() || err == nil {
+	if err == nil || !service.statusManager.IsFullExportRunning() {
 		return status, err
 	}
 	msg := fmt.Sprintf("%s: %s", fullExportMessage, err.Error())
