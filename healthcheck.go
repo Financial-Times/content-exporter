@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -12,12 +13,16 @@ import (
 	"github.com/Financial-Times/service-status-go/gtg"
 )
 
-const healthPath = "/__health"
+const (
+	healthPath        = "/__health"
+	fullExportMessage = "Service is currently performing a full export and lag is expected"
+)
 
 type healthService struct {
-	config *healthConfig
-	checks []health.Check
-	client *http.Client
+	config        *healthConfig
+	checks        []health.Check
+	client        *http.Client
+	statusManager exportStatusManager
 }
 
 type healthConfig struct {
@@ -30,7 +35,11 @@ type healthConfig struct {
 	queueHandler           *queue.KafkaListener
 }
 
-func newHealthService(config *healthConfig) *healthService {
+type exportStatusManager interface {
+	IsFullExportRunning() bool
+}
+
+func newHealthService(config *healthConfig, statusManager exportStatusManager) *healthService {
 	tr := &http.Transport{
 		MaxIdleConnsPerHost: 10,
 		DialContext: (&net.Dialer{
@@ -42,7 +51,7 @@ func newHealthService(config *healthConfig) *healthService {
 		Transport: tr,
 		Timeout:   3 * time.Second,
 	}
-	service := &healthService{config: config, client: httpClient}
+	service := &healthService{config: config, client: httpClient, statusManager: statusManager}
 	service.checks = []health.Check{
 		service.MongoCheck(),
 		service.ReadEndpointCheck(),
@@ -106,10 +115,20 @@ func (service *healthService) KafkaMonitor() health.Check {
 	return health.Check{
 		Name:             "KafkaClientLag",
 		BusinessImpact:   "No Business Impact.",
+		PanicGuide:       "https://runbooks.in.ft.com/content-exporter",
 		Severity:         3,
 		TechnicalSummary: "Messages awaiting handling exceed the configured lag tolerance. Check if Kafka consumer is stuck.",
-		Checker:          service.config.queueHandler.MonitorCheck,
+		Checker:          service.customKafkaMonitorCheck,
 	}
+}
+
+func (service *healthService) customKafkaMonitorCheck() (string, error) {
+	status, err := service.config.queueHandler.MonitorCheck()
+	if err == nil || !service.statusManager.IsFullExportRunning() {
+		return status, err
+	}
+	msg := fmt.Sprintf("%s: %s", fullExportMessage, err.Error())
+	return msg, nil
 }
 
 func (service *healthService) GTG() gtg.Status {

@@ -36,6 +36,7 @@ type Job struct {
 	Status                   State             `json:"Status"`
 	ErrorMessage             string            `json:"ErrorMessage,omitempty"`
 	ContentRetrievalThrottle int               `json:"-"`
+	FullExport               bool              `json:"-"`
 }
 
 func NewFullExporter(nrOfWorkers int, exporter *content.Exporter) *Service {
@@ -78,6 +79,17 @@ func (fe *Service) AddJob(job *Job) {
 
 func (fe *Service) GetWorkerCount() int {
 	return fe.nrOfConcurrentWorkers
+}
+
+func (fe *Service) IsFullExportRunning() bool {
+	fe.RLock()
+	defer fe.RUnlock()
+	for _, job := range fe.jobs {
+		if job.FullExport && job.Status != FINISHED {
+			return true
+		}
+	}
+	return false
 }
 
 func (job *Job) Copy() Job {
