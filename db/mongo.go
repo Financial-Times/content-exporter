@@ -31,7 +31,6 @@ type Iterator interface {
 	Done() bool
 	Next(result interface{}) bool
 	Err() error
-	Timeout() bool
 	Close() error
 }
 

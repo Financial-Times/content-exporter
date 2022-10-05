@@ -1,41 +1,37 @@
-package content
+package db
 
 import (
 	"fmt"
 
-	"github.com/Financial-Times/content-exporter/db"
+	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/go-logger/v2"
 )
 
-type Inquirer interface {
-	Inquire(collection string, candidates []string) (chan Stub, int, error)
-}
-
 type MongoInquirer struct {
-	Mongo db.Service
+	mongo Service
 	log   *logger.UPPLogger
 }
 
-func NewMongoInquirer(mongo db.Service, log *logger.UPPLogger) *MongoInquirer {
+func NewMongoInquirer(mongo Service, log *logger.UPPLogger) *MongoInquirer {
 	return &MongoInquirer{
-		Mongo: mongo,
+		mongo: mongo,
 		log:   log,
 	}
 }
 
-func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan Stub, int, error) {
-	tx, err := m.Mongo.Open()
-
+func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan *content.Stub, int, error) {
+	tx, err := m.mongo.Open()
 	if err != nil {
 		return nil, 0, err
 	}
+
 	iter, length, err := tx.FindUUIDs(collection, candidates, m.log)
 	if err != nil {
 		tx.Close()
 		return nil, 0, err
 	}
 
-	docs := make(chan Stub, 8)
+	docs := make(chan *content.Stub, 8)
 
 	go func() {
 		defer close(docs)
@@ -59,11 +55,15 @@ func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan St
 	return docs, length, nil
 }
 
-func mapStub(result map[string]interface{}) (Stub, error) {
+func mapStub(result map[string]interface{}) (*content.Stub, error) {
 	docUUID, ok := result["uuid"]
 	if !ok {
-		return Stub{}, fmt.Errorf("no uuid field found in iter result: %v", result)
+		return nil, fmt.Errorf("uuid not found in document: %v", result)
 	}
 
-	return Stub{UUID: docUUID.(string), Date: GetDateOrDefault(result), CanBeDistributed: nil}, nil
+	return &content.Stub{
+		UUID:             docUUID.(string),
+		Date:             content.GetDateOrDefault(result),
+		CanBeDistributed: nil,
+	}, nil
 }

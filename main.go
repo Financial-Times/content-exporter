@@ -230,7 +230,7 @@ func main() {
 
 		go serveEndpoints(*appSystemCode, *appName, *port, log, web.NewRequestHandler(
 			fullExporter,
-			content.NewMongoInquirer(mongo, log),
+			db.NewMongoInquirer(mongo, log),
 			locker,
 			*isIncExportEnabled,
 			*contentRetrievalThrottle,

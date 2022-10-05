@@ -28,16 +28,16 @@ type Job struct {
 	sync.RWMutex
 	wg                       sync.WaitGroup
 	Log                      *logger.UPPLogger
-	NrWorker                 int               `json:"-"`
-	DocIds                   chan content.Stub `json:"-"`
-	ID                       string            `json:"ID"`
-	Count                    int               `json:"Count,omitempty"`
-	Progress                 int               `json:"Progress,omitempty"`
-	Failed                   []string          `json:"Failed,omitempty"`
-	Status                   State             `json:"Status"`
-	ErrorMessage             string            `json:"ErrorMessage,omitempty"`
-	ContentRetrievalThrottle int               `json:"-"`
-	FullExport               bool              `json:"-"`
+	NrWorker                 int                `json:"-"`
+	DocIds                   chan *content.Stub `json:"-"`
+	ID                       string             `json:"ID"`
+	Count                    int                `json:"Count,omitempty"`
+	Progress                 int                `json:"Progress,omitempty"`
+	Failed                   []string           `json:"Failed,omitempty"`
+	Status                   State              `json:"Status"`
+	ErrorMessage             string             `json:"ErrorMessage,omitempty"`
+	ContentRetrievalThrottle int                `json:"-"`
+	FullExport               bool               `json:"-"`
 }
 
 func NewFullExporter(nrOfWorkers int, exporter *content.Exporter) *Service {
@@ -105,7 +105,7 @@ func (job *Job) Copy() Job {
 	}
 }
 
-func (job *Job) RunFullExport(tid string, export func(string, content.Stub) error) {
+func (job *Job) RunFullExport(tid string, export func(string, *content.Stub) error) {
 	job.Log.Infof("Job started: %v", job.ID)
 	job.Status = RUNNING
 	worker := make(chan struct{}, job.NrWorker)

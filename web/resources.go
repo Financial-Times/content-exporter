@@ -20,20 +20,24 @@ type Exporter interface {
 	GetJob(jobID string) (export.Job, error)
 	GetRunningJobs() []export.Job
 	AddJob(job *export.Job)
-	HandleContent(tid string, doc content.Stub) error
+	HandleContent(tid string, doc *content.Stub) error
 	GetWorkerCount() int
+}
+
+type inquirer interface {
+	Inquire(collection string, candidates []string) (chan *content.Stub, int, error)
 }
 
 type RequestHandler struct {
 	FullExporter             Exporter
-	Inquirer                 content.Inquirer
+	Inquirer                 inquirer
 	ContentRetrievalThrottle int
 	*export.Locker
 	IsIncExportEnabled bool
 	log                *logger.UPPLogger
 }
 
-func NewRequestHandler(fullExporter Exporter, inquirer content.Inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int, log *logger.UPPLogger) *RequestHandler {
+func NewRequestHandler(fullExporter Exporter, inquirer inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int, log *logger.UPPLogger) *RequestHandler {
 	return &RequestHandler{
 		FullExporter:             fullExporter,
 		Inquirer:                 inquirer,

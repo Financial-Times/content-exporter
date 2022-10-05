@@ -24,7 +24,7 @@ func NewExporter(fetcher Fetcher, updater updater) *Exporter {
 	}
 }
 
-func (e *Exporter) HandleContent(tid string, doc Stub) error {
+func (e *Exporter) HandleContent(tid string, doc *Stub) error {
 	payload, err := e.Fetcher.GetContent(doc.UUID, tid)
 	if err != nil {
 		return fmt.Errorf("error getting content for %v: %v", doc.UUID, err)

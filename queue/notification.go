@@ -51,7 +51,7 @@ func (h *KafkaContentNotificationHandler) HandleContentNotification(n *Notificat
 			err := errors.New("Shutdown signalled, delay waiting for UPDATE event terminated abruptly")
 			return err
 		}
-		if err := h.ContentExporter.HandleContent(n.Tid, n.Stub); err != nil {
+		if err := h.ContentExporter.HandleContent(n.Tid, &n.Stub); err != nil {
 			return fmt.Errorf("UPDATE ERROR: %v", err)
 		}
 	} else if n.EvType == DELETE {

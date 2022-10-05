@@ -15,7 +15,7 @@ import (
 type exporterMock struct {
 	getJobF         func(jobID string) (export.Job, error)
 	getRunningJobsF func() []export.Job
-	handleContentF  func(tid string, doc content.Stub) error
+	handleContentF  func(tid string, doc *content.Stub) error
 	getWorkerCountF func() int
 }
 
@@ -34,7 +34,7 @@ func (e *exporterMock) GetRunningJobs() []export.Job {
 func (e *exporterMock) AddJob(_ *export.Job) {
 	// Function doesn't return anything so a facade would do
 }
-func (e *exporterMock) HandleContent(tid string, doc content.Stub) error {
+func (e *exporterMock) HandleContent(tid string, doc *content.Stub) error {
 	if e.handleContentF != nil {
 		return e.handleContentF(tid, doc)
 	}
@@ -48,10 +48,10 @@ func (e *exporterMock) GetWorkerCount() int {
 }
 
 type inquirerMock struct {
-	inquireF func(collection string, candidates []string) (chan content.Stub, int, error)
+	inquireF func(collection string, candidates []string) (chan *content.Stub, int, error)
 }
 
-func (i *inquirerMock) Inquire(collection string, candidates []string) (chan content.Stub, int, error) {
+func (i *inquirerMock) Inquire(collection string, candidates []string) (chan *content.Stub, int, error) {
 	if i.inquireF != nil {
 		return i.inquireF(collection, candidates)
 	}
@@ -136,13 +136,13 @@ func TestRequestHandler_Export(t *testing.T) {
 				getWorkerCountF: func() int {
 					return 1
 				},
-				handleContentF: func(tid string, doc content.Stub) error {
+				handleContentF: func(tid string, doc *content.Stub) error {
 					return nil
 				},
 			},
 			inquirer: &inquirerMock{
-				inquireF: func(collection string, candidates []string) (chan content.Stub, int, error) {
-					c := make(chan content.Stub)
+				inquireF: func(collection string, candidates []string) (chan *content.Stub, int, error) {
+					c := make(chan *content.Stub)
 					return c, 0, nil
 				},
 			},
@@ -167,8 +167,8 @@ func TestRequestHandler_Export(t *testing.T) {
 				},
 			},
 			inquirer: &inquirerMock{
-				inquireF: func(collection string, candidates []string) (chan content.Stub, int, error) {
-					c := make(chan content.Stub)
+				inquireF: func(collection string, candidates []string) (chan *content.Stub, int, error) {
+					c := make(chan *content.Stub)
 					return c, 0, nil
 				},
 			},
