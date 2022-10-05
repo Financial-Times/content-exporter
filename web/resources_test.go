@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -48,12 +49,12 @@ func (e *exporterMock) GetWorkerCount() int {
 }
 
 type inquirerMock struct {
-	inquireF func(collection string, candidates []string) (chan *content.Stub, int, error)
+	inquireF func(ctx context.Context, candidates []string) (chan *content.Stub, int, error)
 }
 
-func (i *inquirerMock) Inquire(collection string, candidates []string) (chan *content.Stub, int, error) {
+func (i *inquirerMock) Inquire(ctx context.Context, candidates []string) (chan *content.Stub, int, error) {
 	if i.inquireF != nil {
-		return i.inquireF(collection, candidates)
+		return i.inquireF(ctx, candidates)
 	}
 	panic("inquirerMock.Inquire is not implemented")
 }
@@ -141,7 +142,7 @@ func TestRequestHandler_Export(t *testing.T) {
 				},
 			},
 			inquirer: &inquirerMock{
-				inquireF: func(collection string, candidates []string) (chan *content.Stub, int, error) {
+				inquireF: func(ctx context.Context, candidates []string) (chan *content.Stub, int, error) {
 					c := make(chan *content.Stub)
 					return c, 0, nil
 				},
@@ -167,7 +168,7 @@ func TestRequestHandler_Export(t *testing.T) {
 				},
 			},
 			inquirer: &inquirerMock{
-				inquireF: func(collection string, candidates []string) (chan *content.Stub, int, error) {
+				inquireF: func(ctx context.Context, candidates []string) (chan *content.Stub, int, error) {
 					c := make(chan *content.Stub)
 					return c, 0, nil
 				},

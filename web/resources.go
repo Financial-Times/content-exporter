@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -25,7 +26,7 @@ type Exporter interface {
 }
 
 type inquirer interface {
-	Inquire(collection string, candidates []string) (chan *content.Stub, int, error)
+	Inquire(ctx context.Context, candidates []string) (chan *content.Stub, int, error)
 }
 
 type RequestHandler struct {
@@ -118,7 +119,7 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 			}()
 		}
 		handler.log.Infoln("Calling mongo")
-		docs, count, err := handler.Inquirer.Inquire("content", candidates)
+		docs, count, err := handler.Inquirer.Inquire(context.Background(), candidates)
 		if err != nil {
 			msg := fmt.Sprintf(`Failed to read IDs from mongo for %v!`, "content")
 			handler.log.WithError(err).Info(msg)

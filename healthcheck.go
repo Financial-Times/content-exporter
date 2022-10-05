@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Financial-Times/content-exporter/content"
-	"github.com/Financial-Times/content-exporter/db"
+	"github.com/Financial-Times/content-exporter/mongo"
 	"github.com/Financial-Times/content-exporter/queue"
 	health "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/service-status-go/gtg"
@@ -29,7 +29,7 @@ type healthConfig struct {
 	appSystemCode          string
 	appName                string
 	port                   string
-	db                     *db.MongoDB
+	db                     *mongo.Client
 	enrichedContentFetcher *content.EnrichedContentFetcher
 	s3Uploader             *content.S3Updater
 	queueHandler           *queue.KafkaListener

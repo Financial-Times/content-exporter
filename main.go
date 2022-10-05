@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -14,8 +15,8 @@ import (
 	"time"
 
 	"github.com/Financial-Times/content-exporter/content"
-	"github.com/Financial-Times/content-exporter/db"
 	"github.com/Financial-Times/content-exporter/export"
+	"github.com/Financial-Times/content-exporter/mongo"
 	"github.com/Financial-Times/content-exporter/queue"
 	"github.com/Financial-Times/content-exporter/web"
 	health "github.com/Financial-Times/go-fthealth/v1_1"
@@ -55,11 +56,29 @@ func main() {
 		Desc:   "Port to listen on",
 		EnvVar: "APP_PORT",
 	})
-	mongos := app.String(cli.StringOpt{
+	mongoAddress := app.String(cli.StringOpt{
 		Name:   "mongoConnection",
 		Value:  "",
 		Desc:   "Mongo addresses to connect to in format: host1:port1,host2:port2,...]",
 		EnvVar: "MONGO_CONNECTION",
+	})
+	mongoTimeout := app.Int(cli.IntOpt{
+		Name:   "mongoTimeout",
+		Desc:   "Mongo session connection timeout in seconds. (e.g. 60)",
+		EnvVar: "MONGO_TIMEOUT", // TODO: define in app config
+		Value:  60,
+	})
+	mongoDatabase := app.String(cli.StringOpt{
+		Name:   "mongoConnection",
+		Value:  "upp-store",
+		Desc:   "Mongo database to read from",
+		EnvVar: "MONGO_DATABASE", // TODO: define in app config
+	})
+	mongoCollection := app.String(cli.StringOpt{
+		Name:   "mongoCollection",
+		Value:  "content",
+		Desc:   "Mongo collection to read from",
+		EnvVar: "MONGO_COLLECTION", // TODO: define in app config
 	})
 	enrichedContentBaseURL := app.String(cli.StringOpt{
 		Name:   "enrichedContentBaseURL",
@@ -155,19 +174,22 @@ func main() {
 	log := logger.NewUPPLogger(serviceName, *logLevel)
 
 	app.Before = func() {
-		if err := checkMongoURLs(*mongos); err != nil {
+		if err := checkMongoURLs(*mongoAddress); err != nil {
 			app.PrintHelp()
-			log.Fatalf("Mongo connection is not set correctly: %s", err.Error())
+			log.WithError(err).Fatal("Mongo connection is not set correctly")
 		}
-		_, err := regexp.Compile(*contentOriginAllowlist)
-		if err != nil {
-			app.PrintHelp()
-			log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
-		}
+		_ = regexp.MustCompile(*contentOriginAllowlist)
 	}
 
 	app.Action = func() {
-		mongo := db.NewMongoDatabase(*mongos, 100, log)
+		timeout := time.Duration(*mongoTimeout) * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		mongoClient, err := mongo.NewClient(ctx, *mongoAddress, *mongoDatabase, *mongoCollection, timeout, log)
+		if err != nil {
+			log.WithError(err).Fatal("Error establishing mongo connection")
+		}
 
 		tr := &http.Transport{
 			MaxIdleConnsPerHost: 128,
@@ -222,7 +244,7 @@ func main() {
 				appSystemCode:          *appSystemCode,
 				appName:                *appName,
 				port:                   *port,
-				db:                     mongo,
+				db:                     mongoClient,
 				enrichedContentFetcher: fetcher,
 				s3Uploader:             uploader,
 				queueHandler:           kafkaListener,
@@ -230,7 +252,7 @@ func main() {
 
 		go serveEndpoints(*appSystemCode, *appName, *port, log, web.NewRequestHandler(
 			fullExporter,
-			db.NewMongoInquirer(mongo, log),
+			mongo.NewInquirer(mongoClient, log),
 			locker,
 			*isIncExportEnabled,
 			*contentRetrievalThrottle,
