@@ -6,6 +6,7 @@ import (
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -114,5 +115,6 @@ func TestKafkaContentNotificationHandlerHandleDeleteWithError(t *testing.T) {
 }
 
 func NewContentNotificationHandler(exporter *content.Exporter, delay int) ContentNotificationHandler {
-	return NewKafkaContentNotificationHandler(exporter, delay)
+	log := logger.NewUPPLogger("test", "PANIC")
+	return NewKafkaContentNotificationHandler(exporter, delay, log)
 }

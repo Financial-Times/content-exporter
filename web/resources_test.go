@@ -8,6 +8,7 @@ import (
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/gorilla/mux"
 )
 
@@ -183,9 +184,11 @@ func TestRequestHandler_Export(t *testing.T) {
 		},
 	}
 
+	log := logger.NewUPPLogger("test", "PANIC")
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			h := NewRequestHandler(test.exporter, test.inquirer, test.locker, test.incExportEnabled, test.throttle)
+			h := NewRequestHandler(test.exporter, test.inquirer, test.locker, test.incExportEnabled, test.throttle, log)
 			rr := httptest.NewRecorder()
 			r := mux.NewRouter()
 			req := test.getHTTPRequest()

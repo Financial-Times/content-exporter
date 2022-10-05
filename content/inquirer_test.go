@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Financial-Times/content-exporter/db"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -28,8 +29,8 @@ type mockTX struct {
 	mock.Mock
 }
 
-func (tx *mockTX) FindUUIDs(collectionID string, candidates []string) (db.Iterator, int, error) {
-	args := tx.Called(collectionID, candidates)
+func (tx *mockTX) FindUUIDs(collectionID string, candidates []string, log *logger.UPPLogger) (db.Iterator, int, error) {
+	args := tx.Called(collectionID, candidates, log)
 	return args.Get(0).(db.Iterator), args.Int(1), args.Error(2)
 }
 
@@ -77,10 +78,11 @@ func TestMongoInquirerInquireSuccessfully(t *testing.T) {
 
 	testCollection := "testing"
 	testUUID := "uuid1"
+	log := logger.NewUPPLogger("test", "PANIC")
 
 	mockDb.On("Open").Return(mockTx, nil)
 	mockTx.On("Close")
-	mockTx.On("FindUUIDs", testCollection, mock.AnythingOfType("[]string")).Return(mockIter, 1, nil)
+	mockTx.On("FindUUIDs", testCollection, mock.AnythingOfType("[]string"), log).Return(mockIter, 1, nil)
 	mockIter.On("Next", mock.AnythingOfType("*map[string]interface {}")).Return(true).Run(func(args mock.Arguments) {
 		arg := args.Get(0).(*map[string]interface{})
 		*arg = make(map[string]interface{})
@@ -88,7 +90,7 @@ func TestMongoInquirerInquireSuccessfully(t *testing.T) {
 	}).Once()
 	mockIter.On("Next", mock.AnythingOfType("*map[string]interface {}")).Return(false)
 	mockIter.On("Close").Return(nil)
-	inquirer := NewInquirer(mockDb)
+	inquirer := NewInquirer(mockDb, log)
 
 	docCh, count, err := inquirer.Inquire(testCollection, nil)
 	assert.NoError(t, err)
@@ -120,17 +122,18 @@ func TestMongoInquirerInquireWithoutValidContent(t *testing.T) {
 	testCollection := "testing"
 	testUUID := "uuid1"
 	candidates := []string{testUUID}
+	log := logger.NewUPPLogger("test", "PANIC")
 
 	mockDb.On("Open").Return(mockTx, nil)
 	mockTx.On("Close")
-	mockTx.On("FindUUIDs", testCollection, candidates).Return(mockIter, 1, nil)
+	mockTx.On("FindUUIDs", testCollection, candidates, log).Return(mockIter, 1, nil)
 	mockIter.On("Next", mock.AnythingOfType("*map[string]interface {}")).Return(true).Run(func(args mock.Arguments) {
 		arg := args.Get(0).(*map[string]interface{})
 		*arg = make(map[string]interface{})
 	}).Once()
 	mockIter.On("Next", mock.AnythingOfType("*map[string]interface {}")).Return(false)
 	mockIter.On("Close").Return(nil)
-	inquirer := NewInquirer(mockDb)
+	inquirer := NewInquirer(mockDb, log)
 
 	docCh, count, err := inquirer.Inquire(testCollection, candidates)
 	assert.NoError(t, err)
@@ -160,12 +163,13 @@ func TestMongoInquirerInquireErrorFindingUUIDs(t *testing.T) {
 	testCollection := "testing"
 	testUUID := "uuid1"
 	candidates := []string{testUUID}
+	log := logger.NewUPPLogger("test", "PANIC")
 
 	mockDb.On("Open").Return(mockTx, nil)
 	mockTx.On("Close")
-	mockTx.On("FindUUIDs", testCollection, candidates).Return(mockIter, 0, errors.New("Mongo err"))
+	mockTx.On("FindUUIDs", testCollection, candidates, log).Return(mockIter, 0, errors.New("Mongo err"))
 
-	inquirer := NewInquirer(mockDb)
+	inquirer := NewInquirer(mockDb, log)
 
 	docCh, count, err := inquirer.Inquire(testCollection, candidates)
 	assert.Error(t, err)
@@ -186,10 +190,11 @@ func TestMongoInquirerInquireErrorOpenMongo(t *testing.T) {
 	testCollection := "testing"
 	testUUID := "uuid1"
 	candidates := []string{testUUID}
+	log := logger.NewUPPLogger("test", "PANIC")
 
 	mockDb.On("Open").Return(mockTx, errors.New("Mongo err"))
 
-	inquirer := NewInquirer(mockDb)
+	inquirer := NewInquirer(mockDb, log)
 
 	docCh, count, err := inquirer.Inquire(testCollection, candidates)
 	assert.Error(t, err)
@@ -202,6 +207,6 @@ func TestMongoInquirerInquireErrorOpenMongo(t *testing.T) {
 	mockIter.AssertExpectations(t)
 }
 
-func NewInquirer(svc *mockDbService) Inquirer {
-	return NewMongoInquirer(svc)
+func NewInquirer(svc *mockDbService, log *logger.UPPLogger) Inquirer {
+	return NewMongoInquirer(svc, log)
 }

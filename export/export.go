@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Financial-Times/content-exporter/content"
-	log "github.com/sirupsen/logrus"
+	"github.com/Financial-Times/go-logger/v2"
 )
 
 type Service struct {
@@ -27,6 +27,7 @@ const (
 type Job struct {
 	sync.RWMutex
 	wg                       sync.WaitGroup
+	Log                      *logger.UPPLogger
 	NrWorker                 int               `json:"-"`
 	DocIds                   chan content.Stub `json:"-"`
 	ID                       string            `json:"ID"`
@@ -105,7 +106,7 @@ func (job *Job) Copy() Job {
 }
 
 func (job *Job) RunFullExport(tid string, export func(string, content.Stub) error) {
-	log.Infof("Job started: %v", job.ID)
+	job.Log.Infof("Job started: %v", job.ID)
 	job.Status = RUNNING
 	worker := make(chan struct{}, job.NrWorker)
 	for {
@@ -113,7 +114,7 @@ func (job *Job) RunFullExport(tid string, export func(string, content.Stub) erro
 		if !ok {
 			job.wg.Wait()
 			job.Status = FINISHED
-			log.Infof("Finished job %v with %v failure(s), progress: %v", job.ID, len(job.Failed), job.Progress)
+			job.Log.Infof("Finished job %v with %v failure(s), progress: %v", job.ID, len(job.Failed), job.Progress)
 			close(worker)
 			return
 		}
@@ -126,7 +127,12 @@ func (job *Job) RunFullExport(tid string, export func(string, content.Stub) erro
 			defer job.wg.Done()
 			time.Sleep(time.Duration(job.ContentRetrievalThrottle) * time.Millisecond)
 			if err := export(tid, doc); err != nil {
-				log.WithField("transaction_id", tid).WithField("uuid", doc.UUID).Error(err)
+				job.Log.
+					WithTransactionID(tid).
+					WithUUID(doc.UUID).
+					WithError(err).
+					Error("Failed to process document")
+
 				job.Lock()
 				job.Failed = append(job.Failed, doc.UUID)
 				job.Unlock()

@@ -8,8 +8,8 @@ import (
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/kafka-client-go/v3"
-	log "github.com/sirupsen/logrus"
 )
 
 const canBeDistributedYes = "yes"
@@ -24,15 +24,20 @@ type MessageMapper interface {
 type KafkaMessageMapper struct {
 	ContentOriginAllowlistRegex *regexp.Regexp
 	AllowedContentTypes         map[string]bool
+	log                         *logger.UPPLogger
 }
 
-func NewKafkaMessageMapper(contentOriginAllowlist *regexp.Regexp, allowedContentTypes []string) *KafkaMessageMapper {
+func NewKafkaMessageMapper(contentOriginAllowlist *regexp.Regexp, allowedContentTypes []string, log *logger.UPPLogger) *KafkaMessageMapper {
 	allowedTypes := make(map[string]bool)
 	for _, v := range allowedContentTypes {
 		allowedTypes[v] = true
 	}
 
-	return &KafkaMessageMapper{ContentOriginAllowlistRegex: contentOriginAllowlist, AllowedContentTypes: allowedTypes}
+	return &KafkaMessageMapper{
+		ContentOriginAllowlistRegex: contentOriginAllowlist,
+		AllowedContentTypes:         allowedTypes,
+		log:                         log,
+	}
 }
 
 type event struct {
@@ -80,36 +85,40 @@ func (e *event) mapNotification(tid string) (*Notification, error) {
 
 func (h *KafkaMessageMapper) MapNotification(msg kafka.FTMessage) (*Notification, error) {
 	tid := msg.Headers["X-Request-Id"]
+	log := h.log.WithTransactionID(tid)
+
 	var pubEvent event
 	err := json.Unmarshal([]byte(msg.Body), &pubEvent)
 	if err != nil {
-		log.WithField("transaction_id", tid).WithField("msg", msg.Body).WithError(err).Warn("Skipping event.")
+		log.WithField("msg", msg.Body).WithError(err).Warn("Skipping event.")
 		return nil, err
 	}
 
 	if strings.HasPrefix(tid, "SYNTH") {
-		log.WithField("transaction_id", tid).WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: Synthetic transaction ID.")
+		log.WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: Synthetic transaction ID.")
 		return nil, nil
 	}
 
 	if !h.ContentOriginAllowlistRegex.MatchString(pubEvent.ContentURI) {
-		log.WithField("transaction_id", tid).WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: It is not in the Content Origin allowlist.")
+		log.WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: It is not in the Content Origin allowlist.")
 		return nil, nil
 	}
 
 	n, err := pubEvent.mapNotification(tid)
 	if err != nil {
-		log.WithField("transaction_id", tid).WithField("msg", msg.Body).WithError(err).Warn("Skipping event: Cannot build notification for message.")
+		log.WithField("msg", msg.Body).WithError(err).Warn("Skipping event: Cannot build notification for message.")
 		return nil, err
 	}
 
+	log = log.WithUUID(n.Stub.UUID)
+
 	if !h.AllowedContentTypes[n.Stub.ContentType] {
-		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).WithField("type", n.Stub.ContentType).Info("Skipping event: Type not exportable.")
+		log.WithField("type", n.Stub.ContentType).Info("Skipping event: Type not exportable.")
 		return nil, nil
 	}
 
 	if n.Stub.CanBeDistributed != nil && *n.Stub.CanBeDistributed != canBeDistributedYes {
-		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).Warn("Skipping event: Content cannot be distributed.")
+		log.Warn("Skipping event: Content cannot be distributed.")
 		return nil, nil
 	}
 

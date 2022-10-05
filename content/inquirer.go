@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Financial-Times/content-exporter/db"
-	log "github.com/sirupsen/logrus"
+	"github.com/Financial-Times/go-logger/v2"
 )
 
 type Inquirer interface {
@@ -13,10 +13,14 @@ type Inquirer interface {
 
 type MongoInquirer struct {
 	Mongo db.Service
+	log   *logger.UPPLogger
 }
 
-func NewMongoInquirer(mongo db.Service) *MongoInquirer {
-	return &MongoInquirer{Mongo: mongo}
+func NewMongoInquirer(mongo db.Service, log *logger.UPPLogger) *MongoInquirer {
+	return &MongoInquirer{
+		Mongo: mongo,
+		log:   log,
+	}
 }
 
 func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan Stub, int, error) {
@@ -25,7 +29,7 @@ func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan St
 	if err != nil {
 		return nil, 0, err
 	}
-	iter, length, err := tx.FindUUIDs(collection, candidates)
+	iter, length, err := tx.FindUUIDs(collection, candidates, m.log)
 	if err != nil {
 		tx.Close()
 		return nil, 0, err
@@ -44,12 +48,12 @@ func (m *MongoInquirer) Inquire(collection string, candidates []string) (chan St
 			counter++
 			stub, err := mapStub(result)
 			if err != nil {
-				log.Warn(err)
+				m.log.WithError(err).Warn("Failed to map document")
 				continue
 			}
 			docs <- stub
 		}
-		log.Infof("Processed %v docs", counter)
+		m.log.Infof("Processed %v docs", counter)
 	}()
 
 	return docs, length, nil

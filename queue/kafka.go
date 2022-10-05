@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/Financial-Times/content-exporter/export"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/kafka-client-go/v3"
-	log "github.com/sirupsen/logrus"
 )
 
 type KafkaListener struct {
@@ -20,9 +20,17 @@ type KafkaListener struct {
 	ContentNotificationHandler ContentNotificationHandler
 	MessageMapper              MessageMapper
 	worker                     chan struct{}
+	log                        *logger.UPPLogger
 }
 
-func NewKafkaListener(messageConsumer *kafka.Consumer, notificationHandler *KafkaContentNotificationHandler, messageMapper *KafkaMessageMapper, locker *export.Locker, maxGoRoutines int) *KafkaListener {
+func NewKafkaListener(
+	messageConsumer *kafka.Consumer,
+	notificationHandler *KafkaContentNotificationHandler,
+	messageMapper *KafkaMessageMapper,
+	locker *export.Locker,
+	maxGoRoutines int,
+	log *logger.UPPLogger,
+) *KafkaListener {
 	return &KafkaListener{
 		messageConsumer:            messageConsumer,
 		Locker:                     locker,
@@ -32,20 +40,21 @@ func NewKafkaListener(messageConsumer *kafka.Consumer, notificationHandler *Kafk
 		ContentNotificationHandler: notificationHandler,
 		MessageMapper:              messageMapper,
 		worker:                     make(chan struct{}, maxGoRoutines),
+		log:                        log,
 	}
 }
 
 func (h *KafkaListener) resumeConsuming() {
 	h.Lock()
 	defer h.Unlock()
-	log.Debugf("DEBUG resumeConsuming")
+	h.log.Debugf("DEBUG resumeConsuming")
 	h.paused = false
 }
 
 func (h *KafkaListener) pauseConsuming() {
 	h.Lock()
 	defer h.Unlock()
-	log.Debugf("DEBUG pauseConsuming")
+	h.log.Debugf("DEBUG pauseConsuming")
 	h.paused = true
 }
 
@@ -60,27 +69,27 @@ func (h *KafkaListener) ConsumeMessages() {
 	defer func(messageConsumer *kafka.Consumer) {
 		err := messageConsumer.Close()
 		if err != nil {
-			log.WithError(err).Error("Consumer did not close properly")
+			h.log.WithError(err).Error("Consumer did not close properly")
 		}
 	}(h.messageConsumer)
 
 	for {
 		select {
 		case locked := <-h.Locker.Locked:
-			log.Infof("LOCK signal received: %v...", locked)
+			h.log.Infof("LOCK signal received: %v...", locked)
 			if locked {
 				h.pauseConsuming()
 				select {
 				case h.Locker.Acked <- struct{}{}:
-					log.Infof("LOCK acked")
+					h.log.Infof("LOCK acked")
 				case <-time.After(time.Second * 3):
-					log.Infof("LOCK acking timed out. Maybe initiator quit already?")
+					h.log.Infof("LOCK acking timed out. Maybe initiator quit already?")
 				}
 			} else {
 				h.resumeConsuming()
 			}
 		case <-h.Quit:
-			log.Infof("QUIT signal received...")
+			h.log.Infof("QUIT signal received...")
 			return
 		}
 	}
@@ -105,9 +114,10 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) {
 	}
 
 	tid := msg.Headers["X-Request-Id"]
+	log := h.log.WithTransactionID(tid)
 
 	if h.paused {
-		log.WithField("transaction_id", tid).Info("PAUSED handling message")
+		log.Info("PAUSED handling message")
 		for h.paused {
 			if h.ShutDownPrepared {
 				h.Cleanup.Do(func() {
@@ -117,7 +127,7 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) {
 			}
 			time.Sleep(time.Millisecond * 500)
 		}
-		log.WithField("transaction_id", tid).Info("PAUSE finished. Resuming handling messages")
+		log.Info("PAUSE finished. Resuming handling messages")
 	}
 
 	n, _ := h.MessageMapper.MapNotification(msg)
@@ -130,7 +140,7 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) {
 	select {
 	case h.received <- n:
 	case <-n.Quit:
-		log.WithField("transaction_id", tid).WithField("uuid", n.Stub.UUID).Error("Notification handling is terminated")
+		log.WithUUID(n.Stub.UUID).Error("Notification handling is terminated")
 		return
 	}
 	if h.ShutDownPrepared {
@@ -141,27 +151,29 @@ func (h *KafkaListener) HandleMessage(msg kafka.FTMessage) {
 }
 
 func (h *KafkaListener) handleNotifications() {
-	log.Info("Started handling notifications")
+	h.log.Info("Started handling notifications")
 	for n := range h.received {
+		log := h.log.WithTransactionID(n.Tid)
+
 		if h.paused {
-			log.WithField("transaction_id", n.Tid).Info("PAUSED handling notification")
+			log.Info("PAUSED handling notification")
 			for h.paused {
 				time.Sleep(time.Millisecond * 500)
 			}
-			log.WithField("transaction_id", n.Tid).Info("PAUSE finished. Resuming handling notification")
+			log.Info("PAUSE finished. Resuming handling notification")
 		}
 		h.worker <- struct{}{}
 		go func(notification *Notification) {
 			defer func() { <-h.worker }()
 			if err := h.ContentNotificationHandler.HandleContentNotification(notification); err != nil {
-				log.WithField("transaction_id", notification.Tid).WithField("uuid", notification.Stub.UUID).WithError(err).Error("Failed notification handling")
+				log.WithUUID(notification.Stub.UUID).WithError(err).Error("Failed notification handling")
 			}
 			h.Lock()
 			delete(h.pending, notification.Tid)
 			h.Unlock()
 		}(n)
 	}
-	log.Info("Stopped handling notifications")
+	h.log.Info("Stopped handling notifications")
 	h.ShutDown = true
 }
 

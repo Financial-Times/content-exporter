@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Financial-Times/content-exporter/content"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/kafka-client-go/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -194,9 +195,12 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			},
 		},
 	}
+
+	log := logger.NewUPPLogger("test", "PANIC")
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			mapper := NewKafkaMessageMapper(test.contentOriginAllowlistRegex, test.allowedContentTypes)
+			mapper := NewKafkaMessageMapper(test.contentOriginAllowlistRegex, test.allowedContentTypes, log)
 			n, err := mapper.MapNotification(test.msg)
 			if test.error != "" {
 				require.EqualError(t, err, test.error)

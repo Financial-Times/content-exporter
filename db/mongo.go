@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/Financial-Times/go-logger/v2"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -22,7 +22,7 @@ type Service interface {
 
 // TX contains database transaction functions
 type TX interface {
-	FindUUIDs(collectionId string, candidates []string) (Iterator, int, error)
+	FindUUIDs(collectionId string, candidates []string, log *logger.UPPLogger) (Iterator, int, error)
 	Ping(ctx context.Context) error
 	Close()
 }
@@ -46,10 +46,16 @@ type MongoDB struct {
 	Timeout int
 	lock    *sync.Mutex
 	session *mgo.Session
+	log     *logger.UPPLogger
 }
 
-func NewMongoDatabase(connection string, timeout int) *MongoDB {
-	return &MongoDB{Urls: connection, Timeout: timeout, lock: &sync.Mutex{}}
+func NewMongoDatabase(connection string, timeout int, log *logger.UPPLogger) *MongoDB {
+	return &MongoDB{
+		Urls:    connection,
+		Timeout: timeout,
+		lock:    &sync.Mutex{},
+		log:     log,
+	}
 }
 
 func (db *MongoDB) Open() (TX, error) {
@@ -59,7 +65,7 @@ func (db *MongoDB) Open() (TX, error) {
 	if db.session == nil {
 		session, err := mgo.DialWithTimeout(db.Urls, time.Duration(db.Timeout)*time.Millisecond)
 		if err != nil {
-			log.WithError(err).Error("Session error")
+			db.log.WithError(err).Error("Session error")
 			return nil, err
 		}
 		session.SetSocketTimeout(10 * time.Minute)
@@ -67,14 +73,15 @@ func (db *MongoDB) Open() (TX, error) {
 		connections++
 
 		if connections > expectedConnections {
-			log.Warnf("There are more MongoDB connections opened than expected! Are you sure this is what you want? Open connections: %v, expected %v.", connections, expectedConnections)
+			db.log.Warnf("There are more MongoDB connections opened than expected! "+
+				"Are you sure this is what you want? Open connections: %v, expected %v.", connections, expectedConnections)
 		}
 	}
 
 	return &MongoTX{db.session.Copy()}, nil
 }
 
-func (tx *MongoTX) FindUUIDs(collectionID string, candidates []string) (Iterator, int, error) {
+func (tx *MongoTX) FindUUIDs(collectionID string, candidates []string, log *logger.UPPLogger) (Iterator, int, error) {
 	collection := tx.session.DB("upp-store").C(collectionID)
 
 	query, projection := findUUIDsQueryElements(candidates)

@@ -6,13 +6,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/mgo.v2/bson"
 )
 
 func TestCreateDB(t *testing.T) {
-	mongo := NewMongoDatabase("test-url", 30000)
+	log := logger.NewUPPLogger("test", "PANIC")
+	mongo := NewMongoDatabase("test-url", 30000, log)
 	assert.Equal(t, "test-url", mongo.Urls)
 	assert.Equal(t, 30000, mongo.Timeout)
 	assert.NotNil(t, mongo.lock)
@@ -67,7 +69,8 @@ func startMongo(t *testing.T) Service {
 		t.Fatal("Please set the environment variable MONGO_TEST_URL to run mongo integration tests (e.g. MONGO_TEST_URL=localhost:27017). Alternatively, run `go test -short` to skip them.")
 	}
 
-	return NewMongoDatabase(mongoURL, 30000)
+	log := logger.NewUPPLogger("test", "PANIC")
+	return NewMongoDatabase(mongoURL, 30000, log)
 }
 
 func insertTestContent(t *testing.T, mongo *MongoDB, testContent map[string]interface{}) {
@@ -212,6 +215,8 @@ func TestMongo_FindUUIDs(t *testing.T) {
 	require.NoError(t, err)
 	defer tx.Close()
 
+	log := logger.NewUPPLogger("test", "PANIC")
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			uuids := make([]string, 0)
@@ -229,7 +234,7 @@ func TestMongo_FindUUIDs(t *testing.T) {
 			}
 			defer cleanupTestContent(t, mongo.(*MongoDB), uuids...)
 
-			iter, count, err := tx.FindUUIDs("testing", test.candidates)
+			iter, count, err := tx.FindUUIDs("testing", test.candidates, log)
 			require.NoError(t, err)
 			defer func(iter Iterator) {
 				err := iter.Close()

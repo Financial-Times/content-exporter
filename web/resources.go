@@ -10,10 +10,10 @@ import (
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/transactionid-utils-go"
 	"github.com/gorilla/mux"
 	"github.com/pborman/uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type Exporter interface {
@@ -30,15 +30,17 @@ type RequestHandler struct {
 	ContentRetrievalThrottle int
 	*export.Locker
 	IsIncExportEnabled bool
+	log                *logger.UPPLogger
 }
 
-func NewRequestHandler(fullExporter Exporter, inquirer content.Inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int) *RequestHandler {
+func NewRequestHandler(fullExporter Exporter, inquirer content.Inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int, log *logger.UPPLogger) *RequestHandler {
 	return &RequestHandler{
 		FullExporter:             fullExporter,
 		Inquirer:                 inquirer,
 		Locker:                   locker,
 		IsIncExportEnabled:       isIncExportEnabled,
 		ContentRetrievalThrottle: contentRetrievalThrottle,
+		log:                      log,
 	}
 }
 
@@ -56,41 +58,48 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 	if handler.IsIncExportEnabled {
 		select {
 		case handler.Locker.Locked <- true:
-			log.Info("Lock initiated")
+			handler.log.Info("Lock initiated")
 		case <-time.After(time.Second * 3):
 			msg := "Lock initiation timed out"
-			log.Infof(msg)
+			handler.log.Infof(msg)
 			http.Error(writer, msg, http.StatusServiceUnavailable)
 			return
 		}
 
 		select {
 		case <-handler.Locker.Acked:
-			log.Info("Locker acquired")
+			handler.log.Info("Locker acquired")
 		case <-time.After(time.Second * 20):
 			msg := "Stopping kafka consumption timed out"
-			log.Infof(msg)
+			handler.log.Infof(msg)
 			http.Error(writer, msg, http.StatusServiceUnavailable)
 			return
 		}
 	}
-	candidates := getCandidateUUIDs(request)
+	candidates := getCandidateUUIDs(request, handler.log)
 	isFullExport := request.URL.Query().Get("fullExport") == "true"
 
 	if len(candidates) == 0 && !isFullExport {
-		log.Warn("Can't trigger a non-full export without ids")
-		sendFailedExportResponse(writer, "Pass a list of ids or trigger a full export flag")
+		handler.log.Warn("Can't trigger a non-full export without ids")
+		sendFailedExportResponse(writer, "Pass a list of ids or trigger a full export flag", handler.log)
 		return
 	}
 
 	if len(candidates) > 0 && isFullExport {
-		log.Warn("Can't trigger a full export with ids")
-		sendFailedExportResponse(writer, "Pass either a list of ids or the full export flag, not both")
+		handler.log.Warn("Can't trigger a full export with ids")
+		sendFailedExportResponse(writer, "Pass either a list of ids or the full export flag, not both", handler.log)
 		return
 	}
 
 	jobID := uuid.New()
-	job := &export.Job{ID: jobID, NrWorker: handler.FullExporter.GetWorkerCount(), Status: export.STARTING, ContentRetrievalThrottle: handler.ContentRetrievalThrottle, FullExport: isFullExport}
+	job := &export.Job{
+		ID:                       jobID,
+		NrWorker:                 handler.FullExporter.GetWorkerCount(),
+		Status:                   export.STARTING,
+		ContentRetrievalThrottle: handler.ContentRetrievalThrottle,
+		FullExport:               isFullExport,
+		Log:                      handler.log,
+	}
 	handler.FullExporter.AddJob(job)
 	response := map[string]string{
 		"ID":     job.ID,
@@ -100,20 +109,20 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 	go func() {
 		if handler.IsIncExportEnabled {
 			defer func() {
-				log.Info("Locker released")
+				handler.log.Info("Locker released")
 				handler.Locker.Locked <- false
 			}()
 		}
-		log.Infoln("Calling mongo")
+		handler.log.Infoln("Calling mongo")
 		docs, count, err := handler.Inquirer.Inquire("content", candidates)
 		if err != nil {
-			msg := fmt.Sprintf(`Failed to read IDs from mongo for %v! "%v"`, "content", err.Error())
-			log.Info(msg)
+			msg := fmt.Sprintf(`Failed to read IDs from mongo for %v!`, "content")
+			handler.log.WithError(err).Info(msg)
 			job.ErrorMessage = msg
 			job.Status = export.FINISHED
 			return
 		}
-		log.Infof("Nr of UUIDs found: %v", count)
+		handler.log.Infof("Nr of UUIDs found: %v", count)
 		job.DocIds = docs
 		job.Count = count
 
@@ -125,14 +134,14 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 
 	err := json.NewEncoder(writer).Encode(response)
 	if err != nil {
-		msg := fmt.Sprintf(`Failed to write job %v to response writer: "%v"`, job.ID, err)
-		log.Warn(msg)
+		msg := fmt.Sprintf(`Failed to write job %v to response writer`, job.ID)
+		handler.log.WithError(err).Warn(msg)
 		fmt.Fprintf(writer, "{\"ID\": \"%v\"}", job.ID)
 		return
 	}
 }
 
-func sendFailedExportResponse(writer http.ResponseWriter, msg string) {
+func sendFailedExportResponse(writer http.ResponseWriter, msg string, log *logger.UPPLogger) {
 	response := map[string]string{
 		"error": msg,
 	}
@@ -141,20 +150,20 @@ func sendFailedExportResponse(writer http.ResponseWriter, msg string) {
 	writer.Header().Add("Content-Type", "application/json")
 	err := json.NewEncoder(writer).Encode(response)
 	if err != nil {
-		log.Warn("Could not stringify failed export response")
+		log.WithError(err).Warn("Could not stringify failed export response")
 	}
 }
 
-func getCandidateUUIDs(request *http.Request) (candidates []string) {
+func getCandidateUUIDs(request *http.Request, log *logger.UPPLogger) (candidates []string) {
 	var result map[string]interface{}
 	body, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		log.Debugf("No valid POST body found, thus no candidate ids to export. Parsing error: %v", err)
+		log.WithError(err).Debug("No valid POST body found, thus no candidate ids to export")
 		return
 	}
 
 	if err = json.Unmarshal(body, &result); err != nil {
-		log.Debugf("No valid json body found, thus no candidate ids to export. Parsing error: %v", err)
+		log.WithError(err).Debug("No valid json body found, thus no candidate ids to export")
 		return
 	}
 	log.Infof("DEBUG Parsing request body: %v", result)
@@ -184,15 +193,15 @@ func (handler *RequestHandler) GetJob(writer http.ResponseWriter, request *http.
 	job, err := handler.FullExporter.GetJob(jobID)
 	if err != nil {
 		msg := fmt.Sprintf(`{"message":"%v"}`, err)
-		log.Info(msg)
-		http.Error(writer, msg, http.StatusNotFound)
+		handler.log.WithError(err).Info("Failed to retrieve job")
+		http.Error(writer, msg, http.StatusNotFound) // TODO: test
 		return
 	}
 
 	err = json.NewEncoder(writer).Encode(job)
 	if err != nil {
-		msg := fmt.Sprintf(`Failed to write job %v to response writer: "%v"`, job.ID, err)
-		log.Warn(msg)
+		msg := fmt.Sprintf(`Failed to write job %v to response writer`, job.ID)
+		handler.log.WithError(err).Warn(msg)
 		fmt.Fprintf(writer, "{\"ID\": \"%v\"}", job.ID)
 		return
 	}
@@ -207,8 +216,7 @@ func (handler *RequestHandler) GetRunningJobs(writer http.ResponseWriter, reques
 
 	err := json.NewEncoder(writer).Encode(jobs)
 	if err != nil {
-		msg := fmt.Sprintf(`Failed to get running jobs: "%v"`, err)
-		log.Warn(msg)
+		handler.log.WithError(err).Warn("Failed to get running jobs")
 		fmt.Fprintf(writer, "{\"Jobs\": \"%v\"}", jobs)
 		return
 	}

@@ -13,19 +13,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Financial-Times/go-logger/v2"
-	log "github.com/sirupsen/logrus"
-
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/db"
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/content-exporter/queue"
 	"github.com/Financial-Times/content-exporter/web"
 	health "github.com/Financial-Times/go-fthealth/v1_1"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	"github.com/Financial-Times/kafka-client-go/v3"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
-
 	"github.com/gorilla/mux"
 	cli "github.com/jawher/mow.cli"
 	"github.com/rcrowley/go-metrics"
@@ -155,6 +152,8 @@ func main() {
 		EnvVar: "ALLOWED_CONTENT_TYPES",
 	})
 
+	log := logger.NewUPPLogger(serviceName, *logLevel)
+
 	app.Before = func() {
 		if err := checkMongoURLs(*mongos); err != nil {
 			app.PrintHelp()
@@ -168,12 +167,7 @@ func main() {
 	}
 
 	app.Action = func() {
-
-		log := logger.NewUPPLogger(serviceName, *logLevel)
-
-		log.WithField("event", "service_started").WithField("app-name", *appName).Info("Service started")
-
-		mongo := db.NewMongoDatabase(*mongos, 100)
+		mongo := db.NewMongoDatabase(*mongos, 100, log)
 
 		tr := &http.Transport{
 			MaxIdleConnsPerHost: 128,
@@ -205,7 +199,18 @@ func main() {
 		locker := export.NewLocker()
 		var kafkaListener *queue.KafkaListener
 		if *isIncExportEnabled {
-			kafkaListener = prepareIncrementalExport(log, consumerAddrs, consumerGroupID, topic, contentOriginAllowlist, *allowedContentTypes, exporter, delayForNotification, locker, maxGoRoutines)
+			kafkaListener = prepareIncrementalExport(
+				log,
+				consumerAddrs,
+				consumerGroupID,
+				topic,
+				contentOriginAllowlist,
+				*allowedContentTypes,
+				exporter,
+				delayForNotification,
+				locker,
+				maxGoRoutines,
+			)
 			go kafkaListener.ConsumeMessages()
 			defer kafkaListener.StopConsumingMessages()
 		} else {
@@ -223,7 +228,18 @@ func main() {
 				queueHandler:           kafkaListener,
 			}, fullExporter)
 
-		go serveEndpoints(*appSystemCode, *appName, *port, web.NewRequestHandler(fullExporter, content.NewMongoInquirer(mongo), locker, *isIncExportEnabled, *contentRetrievalThrottle), healthService)
+		go serveEndpoints(*appSystemCode, *appName, *port, log, web.NewRequestHandler(
+			fullExporter,
+			content.NewMongoInquirer(mongo, log),
+			locker,
+			*isIncExportEnabled,
+			*contentRetrievalThrottle,
+			log,
+		), healthService)
+
+		log.
+			WithField("event", "service_started").
+			WithField("app-name", *appName).Info("Service started")
 
 		waitForSignal()
 		log.Info("Gracefully shut down")
@@ -237,7 +253,15 @@ func main() {
 	}
 }
 
-func prepareIncrementalExport(logger *logger.UPPLogger, consumerAddrs *string, consumerGroupID *string, topic *string, contentOriginAllowlist *string, allowedContentTypes []string, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
+func prepareIncrementalExport(
+	log *logger.UPPLogger,
+	consumerAddrs, consumerGroupID, topic, contentOriginAllowlist *string,
+	allowedContentTypes []string,
+	exporter *content.Exporter,
+	delayForNotification *int,
+	locker *export.Locker,
+	maxGoRoutines *int,
+) *queue.KafkaListener {
 	config := kafka.ConsumerConfig{
 		BrokersConnectionString: *consumerAddrs,
 		ConsumerGroup:           *consumerGroupID,
@@ -246,22 +270,21 @@ func prepareIncrementalExport(logger *logger.UPPLogger, consumerAddrs *string, c
 	topics := []*kafka.Topic{
 		kafka.NewTopic(*topic),
 	}
-	messageConsumer := kafka.NewConsumer(config, topics, logger)
+	messageConsumer := kafka.NewConsumer(config, topics, log)
 
 	contentOriginAllowListRegex, err := regexp.Compile(*contentOriginAllowlist)
 	if err != nil {
 		log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
 	}
 
-	kafkaMessageHandler := queue.NewKafkaContentNotificationHandler(exporter, *delayForNotification)
-	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
-	kafkaListener := queue.NewKafkaListener(messageConsumer, kafkaMessageHandler, kafkaMessageMapper, locker, *maxGoRoutines)
+	kafkaMessageHandler := queue.NewKafkaContentNotificationHandler(exporter, *delayForNotification, log)
+	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowListRegex, allowedContentTypes, log)
+	kafkaListener := queue.NewKafkaListener(messageConsumer, kafkaMessageHandler, kafkaMessageMapper, locker, *maxGoRoutines, log)
 
 	return kafkaListener
 }
 
-func serveEndpoints(appSystemCode string, appName string, port string, requestHandler *web.RequestHandler,
-	healthService *healthService) {
+func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, requestHandler *web.RequestHandler, healthService *healthService) {
 
 	serveMux := http.NewServeMux()
 
@@ -276,7 +299,7 @@ func serveEndpoints(appSystemCode string, appName string, port string, requestHa
 	servicesRouter.HandleFunc("/jobs", requestHandler.GetRunningJobs).Methods(http.MethodGet)
 
 	var monitoringRouter http.Handler = servicesRouter
-	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.StandardLogger(), monitoringRouter)
+	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.Logger, monitoringRouter)
 	monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
 
 	serveMux.Handle("/", monitoringRouter)

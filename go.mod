@@ -16,7 +16,6 @@ require (
 	github.com/pkg/errors v0.8.1-0.20170505043639-c605e284fe17
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/sethgrid/pester v0.0.0-20160429172022-8053687f9965
-	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	gopkg.in/mgo.v2 v2.0.0-20160818020120-3f83fa500528
 )
@@ -40,6 +39,7 @@ require (
 	github.com/klauspost/compress v1.15.0 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/stretchr/objx v0.1.0 // indirect
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
