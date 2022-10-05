@@ -13,9 +13,3 @@ resources:
     memory: 40Mi
   limits:
     memory: 256Mi
-env:
-  enrichedContent:
-    baseUrl: "http://api-policy-component:8080"
-  kafka:
-    topic: "PostPublicationEvents"
-  contentRetrievalThrottle: 500

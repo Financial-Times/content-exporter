@@ -80,11 +80,11 @@ func main() {
 		Desc:   "Mongo collection to read from",
 		EnvVar: "MONGO_COLLECTION", // TODO: define in app config
 	})
-	enrichedContentBaseURL := app.String(cli.StringOpt{
-		Name:   "enrichedContentBaseURL",
-		Value:  "http://localhost:8080",
-		Desc:   "Base URL to enriched content endpoint",
-		EnvVar: "ENRICHED_CONTENT_BASE_URL",
+	enrichedContentAPIURL := app.String(cli.StringOpt{
+		Name:   "enrichedContentAPIURL",
+		Value:  "http://localhost:8080/enrichedcontent/",
+		Desc:   "API URL to enriched content endpoint",
+		EnvVar: "ENRICHED_CONTENT_API_URL",
 	})
 	enrichedContentHealthURL := app.String(cli.StringOpt{
 		Name:   "enrichedContentHealthURL",
@@ -207,13 +207,7 @@ func main() {
 		client.MaxRetries = 3
 		client.Concurrency = 1
 
-		fetcher := &content.EnrichedContentFetcher{
-			Client:                   client,
-			EnrichedContentBaseURL:   *enrichedContentBaseURL,
-			EnrichedContentHealthURL: *enrichedContentHealthURL,
-			XPolicyHeaderValues:      *xPolicyHeaderValues,
-			Authorization:            *authorization,
-		}
+		fetcher := content.NewEnrichedContentFetcher(client, *enrichedContentAPIURL, *enrichedContentHealthURL, *xPolicyHeaderValues, *authorization)
 		uploader := content.NewS3Updater(client, *s3WriterBaseURL, *s3WriterHealthURL)
 
 		exporter := content.NewExporter(fetcher, uploader)

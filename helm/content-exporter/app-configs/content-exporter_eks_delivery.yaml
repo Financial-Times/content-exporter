@@ -4,7 +4,12 @@ service:
 env:
   kafka:
     groupId: "content-exporter"
+    topic: "PostPublicationEvents"
   s3Writer:
     baseUrl: "http://upp-exports-rw-s3:8080"
   contentOriginAllowlist: "^http://upp-content-validator\\.svc\\.ft\\.com(:\\d{2,5})?/content/[\\w-]+.*$"
   allowedContentTypes: "Article"
+  enrichedContent:
+    baseUrl: "http://api-policy-component:8080"
+    apiPath: "enrichedcontent"
+  contentRetrievalThrottle: 500

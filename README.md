@@ -54,24 +54,24 @@ content-exporter [OPTIONS]
 Exports content from DB and sends to S3
 
 Options:
-    --app-system-code="content-exporter"                       System Code of the application ($APP_SYSTEM_CODE)
-    --app-name="content-exporter"                              Application name ($APP_NAME)
-    --port="8080"                                              Port to listen on ($APP_PORT)
-    --mongoConnection=""                                       Mongo addresses to connect to in format: host1:port1,host2:port2,...] ($MONGO_CONNECTION)
-    --enrichedContentBaseURL="http://localhost:8080"           Base URL to enriched content endpoint ($ENRICHED_CONTENT_BASE_URL)
-    --enrichedContentHealthURL="http://localhost:8080/__gtg"   Health URL to enriched content endpoint ($ENRICHED_CONTENT_HEALTH_URL)
-    --s3WriterBaseURL="http://localhost:8080"                  Base URL to S3 writer endpoint ($S3_WRITER_BASE_URL)
-    --s3WriterHealthURL="http://localhost:8080/__gtg"          Health URL to S3 writer endpoint ($S3_WRITER_HEALTH_URL)
-    --xPolicyHeaderValues=""                                   Values for X-Policy header separated by comma, e.g. INCLUDE_RICH_CONTENT,EXPAND_IMAGES ($X_POLICY_HEADER_VALUES)
-    --authorization=""                                         Authorization for enrichedcontent endpoint, needed only when calling the endpoint via Varnish ($AUTHORIZATION)
-    --kafka-addr=""                                            Comma separated kafka hosts for message consuming. ($KAFKA_ADDRS)
-    --group-id=""                                              Kafka qroup id used for message consuming. ($GROUP_ID)
-    --topic=""                                                 Kafka topic to read from. ($TOPIC)
-    --delayForNotification=30                                  Delay in seconds for notifications to being handled ($DELAY_FOR_NOTIFICATION)
-    --contentOriginAllowlist=""                                The contentOriginAllowlist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$ ($CONTENT_ORIGIN_ALLOWLIST)
-    --logLevel="DEBUG/INFO/WARN/ERROR"                         Parameter for setting logging level. 
-    --maxGoRoutines=100                                        Maximum goroutines to allocate for kafka message handling ($MAX_GO_ROUTINES)
-    --contentRetrievalThrottle=0                               Delay in milliseconds between content retrieval calls
+    --app-system-code="content-exporter"                              System Code of the application ($APP_SYSTEM_CODE)
+    --app-name="content-exporter"                                     Application name ($APP_NAME)
+    --port="8080"                                                     Port to listen on ($APP_PORT)
+    --mongoConnection=""                                              Mongo addresses to connect to in format: host1:port1,host2:port2,...] ($MONGO_CONNECTION)
+    --enrichedContentBaseURL="http://localhost:8080/enrichedcontent/" API URL to enriched content endpoint ($ENRICHED_CONTENT_API_URL)
+    --enrichedContentHealthURL="http://localhost:8080/__gtg"          Health URL to enriched content endpoint ($ENRICHED_CONTENT_HEALTH_URL)
+    --s3WriterBaseURL="http://localhost:8080"                         Base URL to S3 writer endpoint ($S3_WRITER_BASE_URL)
+    --s3WriterHealthURL="http://localhost:8080/__gtg"                 Health URL to S3 writer endpoint ($S3_WRITER_HEALTH_URL)
+    --xPolicyHeaderValues=""                                          Values for X-Policy header separated by comma, e.g. INCLUDE_RICH_CONTENT,EXPAND_IMAGES ($X_POLICY_HEADER_VALUES)
+    --authorization=""                                                Authorization for enrichedcontent endpoint, needed only when calling the endpoint via Varnish ($AUTHORIZATION)
+    --kafka-addr=""                                                   Comma separated kafka hosts for message consuming. ($KAFKA_ADDRS)
+    --group-id=""                                                     Kafka qroup id used for message consuming. ($GROUP_ID)
+    --topic=""                                                        Kafka topic to read from. ($TOPIC)
+    --delayForNotification=30                                         Delay in seconds for notifications to being handled ($DELAY_FOR_NOTIFICATION)
+    --contentOriginAllowlist=""                                       The contentOriginAllowlist for incoming notifications - i.e. ^http://.*-transformer-(pr|iw)-uk-.*\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$ ($CONTENT_ORIGIN_ALLOWLIST)
+    --logLevel="DEBUG/INFO/WARN/ERROR"                                Parameter for setting logging level. 
+    --maxGoRoutines=100                                               Maximum goroutines to allocate for kafka message handling ($MAX_GO_ROUTINES)
+    --contentRetrievalThrottle=0                                      Delay in milliseconds between content retrieval calls
 ```
 
 3. Test:

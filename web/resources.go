@@ -17,11 +17,11 @@ import (
 	"github.com/pborman/uuid"
 )
 
-type Exporter interface {
+type exporter interface {
 	GetJob(jobID string) (export.Job, error)
 	GetRunningJobs() []export.Job
 	AddJob(job *export.Job)
-	HandleContent(tid string, doc *content.Stub) error
+	Export(tid string, doc *content.Stub) error
 	GetWorkerCount() int
 }
 
@@ -30,21 +30,21 @@ type inquirer interface {
 }
 
 type RequestHandler struct {
-	FullExporter             Exporter
-	Inquirer                 inquirer
-	ContentRetrievalThrottle int
-	*export.Locker
-	IsIncExportEnabled bool
-	log                *logger.UPPLogger
+	fullExporter             exporter
+	inquirer                 inquirer
+	contentRetrievalThrottle int
+	locker                   *export.Locker
+	isIncExportEnabled       bool
+	log                      *logger.UPPLogger
 }
 
-func NewRequestHandler(fullExporter Exporter, inquirer inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int, log *logger.UPPLogger) *RequestHandler {
+func NewRequestHandler(fullExporter exporter, inquirer inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int, log *logger.UPPLogger) *RequestHandler {
 	return &RequestHandler{
-		FullExporter:             fullExporter,
-		Inquirer:                 inquirer,
-		Locker:                   locker,
-		IsIncExportEnabled:       isIncExportEnabled,
-		ContentRetrievalThrottle: contentRetrievalThrottle,
+		fullExporter:             fullExporter,
+		inquirer:                 inquirer,
+		locker:                   locker,
+		isIncExportEnabled:       isIncExportEnabled,
+		contentRetrievalThrottle: contentRetrievalThrottle,
 		log:                      log,
 	}
 }
@@ -54,15 +54,15 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 
 	tid := transactionidutils.GetTransactionIDFromRequest(request)
 
-	jobs := handler.FullExporter.GetRunningJobs()
+	jobs := handler.fullExporter.GetRunningJobs()
 	if len(jobs) > 0 {
 		http.Error(writer, "There are already running export jobs. Please wait them to finish", http.StatusBadRequest)
 		return
 	}
 
-	if handler.IsIncExportEnabled {
+	if handler.isIncExportEnabled {
 		select {
-		case handler.Locker.Locked <- true:
+		case handler.locker.Locked <- true:
 			handler.log.Info("Lock initiated")
 		case <-time.After(time.Second * 3):
 			msg := "Lock initiation timed out"
@@ -72,7 +72,7 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 		}
 
 		select {
-		case <-handler.Locker.Acked:
+		case <-handler.locker.Acked:
 			handler.log.Info("Locker acquired")
 		case <-time.After(time.Second * 20):
 			msg := "Stopping kafka consumption timed out"
@@ -99,27 +99,27 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 	jobID := uuid.New()
 	job := &export.Job{
 		ID:                       jobID,
-		NrWorker:                 handler.FullExporter.GetWorkerCount(),
+		NrWorker:                 handler.fullExporter.GetWorkerCount(),
 		Status:                   export.STARTING,
-		ContentRetrievalThrottle: handler.ContentRetrievalThrottle,
+		ContentRetrievalThrottle: handler.contentRetrievalThrottle,
 		FullExport:               isFullExport,
 		Log:                      handler.log,
 	}
-	handler.FullExporter.AddJob(job)
+	handler.fullExporter.AddJob(job)
 	response := map[string]string{
 		"ID":     job.ID,
 		"Status": string(job.Status),
 	}
 
 	go func() {
-		if handler.IsIncExportEnabled {
+		if handler.isIncExportEnabled {
 			defer func() {
 				handler.log.Info("Locker released")
-				handler.Locker.Locked <- false
+				handler.locker.Locked <- false
 			}()
 		}
 		handler.log.Infoln("Calling mongo")
-		docs, count, err := handler.Inquirer.Inquire(context.Background(), candidates)
+		docs, count, err := handler.inquirer.Inquire(context.Background(), candidates)
 		if err != nil {
 			msg := fmt.Sprintf(`Failed to read IDs from mongo for %v!`, "content")
 			handler.log.WithError(err).Info(msg)
@@ -131,7 +131,7 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 		job.DocIds = docs
 		job.Count = count
 
-		job.RunFullExport(tid, handler.FullExporter.HandleContent)
+		job.RunFullExport(tid, handler.fullExporter.Export)
 	}()
 
 	writer.WriteHeader(http.StatusAccepted)
@@ -195,7 +195,7 @@ func (handler *RequestHandler) GetJob(writer http.ResponseWriter, request *http.
 
 	writer.Header().Add("Content-Type", "application/json")
 
-	job, err := handler.FullExporter.GetJob(jobID)
+	job, err := handler.fullExporter.GetJob(jobID)
 	if err != nil {
 		msg := fmt.Sprintf(`{"message":"%v"}`, err)
 		handler.log.WithError(err).Info("Failed to retrieve job")
@@ -217,7 +217,7 @@ func (handler *RequestHandler) GetRunningJobs(writer http.ResponseWriter, reques
 
 	writer.Header().Add("Content-Type", "application/json")
 
-	jobs := handler.FullExporter.GetRunningJobs()
+	jobs := handler.fullExporter.GetRunningJobs()
 
 	err := json.NewEncoder(writer).Encode(jobs)
 	if err != nil {

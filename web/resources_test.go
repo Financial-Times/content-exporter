@@ -16,7 +16,7 @@ import (
 type exporterMock struct {
 	getJobF         func(jobID string) (export.Job, error)
 	getRunningJobsF func() []export.Job
-	handleContentF  func(tid string, doc *content.Stub) error
+	exportF         func(tid string, doc *content.Stub) error
 	getWorkerCountF func() int
 }
 
@@ -35,11 +35,11 @@ func (e *exporterMock) GetRunningJobs() []export.Job {
 func (e *exporterMock) AddJob(_ *export.Job) {
 	// Function doesn't return anything so a facade would do
 }
-func (e *exporterMock) HandleContent(tid string, doc *content.Stub) error {
-	if e.handleContentF != nil {
-		return e.handleContentF(tid, doc)
+func (e *exporterMock) Export(tid string, doc *content.Stub) error {
+	if e.exportF != nil {
+		return e.exportF(tid, doc)
 	}
-	panic("exporterMock.HandleContent is not implemented")
+	panic("exporterMock.Export is not implemented")
 }
 func (e *exporterMock) GetWorkerCount() int {
 	if e.getWorkerCountF != nil {
@@ -137,7 +137,7 @@ func TestRequestHandler_Export(t *testing.T) {
 				getWorkerCountF: func() int {
 					return 1
 				},
-				handleContentF: func(tid string, doc *content.Stub) error {
+				exportF: func(tid string, doc *content.Stub) error {
 					return nil
 				},
 			},

@@ -1,9 +1,9 @@
 package content
 
 import (
+	"fmt"
 	"testing"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,7 +16,7 @@ func TestExporterHandleContentWithValidContent(t *testing.T) {
 	updater := &mockUpdater{t: t, expectedUuid: stubUuid, expectedTid: tid, expectedDate: date, expectedPayload: testData}
 
 	exporter := NewExporter(fetcher, updater)
-	err := exporter.HandleContent(tid, &Stub{stubUuid, date, "", nil})
+	err := exporter.Export(tid, &Stub{stubUuid, date, "", nil})
 
 	assert.NoError(t, err)
 	assert.True(t, fetcher.called)
@@ -28,14 +28,14 @@ func TestExporterHandleContentWithErrorFromFetcher(t *testing.T) {
 	stubUuid := "uuid1"
 	date := "2017-10-09"
 	testData := []byte("uuid: " + stubUuid)
-	fetcher := &mockFetcher{t: t, expectedUuid: stubUuid, expectedTid: tid, result: testData, err: errors.New("fetcher err")}
+	fetcher := &mockFetcher{t: t, expectedUuid: stubUuid, expectedTid: tid, result: testData, err: fmt.Errorf("fetcher err")}
 	updater := &mockUpdater{t: t}
 
 	exporter := NewExporter(fetcher, updater)
-	err := exporter.HandleContent(tid, &Stub{stubUuid, date, "", nil})
+	err := exporter.Export(tid, &Stub{stubUuid, date, "", nil})
 
 	assert.Error(t, err)
-	assert.Equal(t, "error getting content for uuid1: fetcher err", err.Error())
+	assert.EqualError(t, err, "error getting content for uuid1: fetcher err")
 	assert.True(t, fetcher.called)
 	assert.False(t, updater.called)
 }
@@ -46,13 +46,13 @@ func TestExporterHandleContentWithErrorFromUpdater(t *testing.T) {
 	date := "2017-10-09"
 	testData := []byte("uuid: " + stubUuid)
 	fetcher := &mockFetcher{t: t, expectedUuid: stubUuid, expectedTid: tid, result: testData}
-	updater := &mockUpdater{t: t, expectedUuid: stubUuid, expectedTid: tid, expectedDate: date, expectedPayload: testData, err: errors.New("updater err")}
+	updater := &mockUpdater{t: t, expectedUuid: stubUuid, expectedTid: tid, expectedDate: date, expectedPayload: testData, err: fmt.Errorf("updater err")}
 
 	exporter := NewExporter(fetcher, updater)
-	err := exporter.HandleContent(tid, &Stub{stubUuid, date, "", nil})
+	err := exporter.Export(tid, &Stub{stubUuid, date, "", nil})
 
 	assert.Error(t, err)
-	assert.Equal(t, "error uploading content for uuid1: updater err", err.Error())
+	assert.EqualError(t, err, "error uploading content for uuid1: updater err")
 	assert.True(t, fetcher.called)
 	assert.True(t, updater.called)
 }

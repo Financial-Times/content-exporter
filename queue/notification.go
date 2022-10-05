@@ -7,7 +7,6 @@ import (
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/go-logger/v2"
-	"github.com/pkg/errors"
 )
 
 type EventType string
@@ -48,15 +47,15 @@ func (h *KafkaContentNotificationHandler) HandleContentNotification(n *Notificat
 		select {
 		case <-time.After(time.Duration(h.Delay) * time.Second):
 		case <-n.Quit:
-			err := errors.New("Shutdown signalled, delay waiting for UPDATE event terminated abruptly")
+			err := fmt.Errorf("shutdown signalled, delay waiting for UPDATE event terminated abruptly")
 			return err
 		}
-		if err := h.ContentExporter.HandleContent(n.Tid, &n.Stub); err != nil {
+		if err := h.ContentExporter.Export(n.Tid, &n.Stub); err != nil {
 			return fmt.Errorf("UPDATE ERROR: %v", err)
 		}
 	} else if n.EvType == DELETE {
 		logEntry.Info("DELETE event received")
-		if err := h.ContentExporter.Updater.Delete(n.Stub.UUID, n.Tid); err != nil {
+		if err := h.ContentExporter.Delete(n.Stub.UUID, n.Tid); err != nil {
 			if err == content.ErrNotFound {
 				logEntry.Warn(err)
 				return nil
