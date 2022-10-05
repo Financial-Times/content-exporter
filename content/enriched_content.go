@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-type Client interface {
+type httpClient interface {
 	Do(req *http.Request) (resp *http.Response, err error)
 }
 
@@ -17,7 +17,7 @@ type Fetcher interface {
 }
 
 type EnrichedContentFetcher struct {
-	Client                   Client
+	Client                   httpClient
 	EnrichedContentBaseURL   string
 	EnrichedContentHealthURL string
 	XPolicyHeaderValues      string
@@ -56,7 +56,7 @@ func (e *EnrichedContentFetcher) GetContent(uuid, tid string) ([]byte, error) {
 	return ioutil.ReadAll(resp.Body)
 }
 
-func (e *EnrichedContentFetcher) CheckHealth(client Client) (string, error) {
+func (e *EnrichedContentFetcher) CheckHealth(client httpClient) (string, error) {
 	req, err := http.NewRequest("GET", e.EnrichedContentHealthURL, nil)
 	if err != nil {
 		return "Error in building request to check if the enrichedContent fetcher is good to go", err

@@ -14,10 +14,10 @@ type Stub struct {
 
 type Exporter struct {
 	Fetcher Fetcher
-	Updater Updater
+	Updater updater
 }
 
-func NewExporter(fetcher Fetcher, updater Updater) *Exporter {
+func NewExporter(fetcher Fetcher, updater updater) *Exporter {
 	return &Exporter{
 		Fetcher: fetcher,
 		Updater: updater,

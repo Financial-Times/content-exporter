@@ -192,7 +192,7 @@ func main() {
 			XPolicyHeaderValues:      *xPolicyHeaderValues,
 			Authorization:            *authorization,
 		}
-		uploader := &content.S3Updater{Client: client, S3WriterBaseURL: *s3WriterBaseURL, S3WriterHealthURL: *s3WriterHealthURL}
+		uploader := content.NewS3Updater(client, *s3WriterBaseURL, *s3WriterHealthURL)
 
 		exporter := content.NewExporter(fetcher, uploader)
 		fullExporter := export.NewFullExporter(20, exporter)
