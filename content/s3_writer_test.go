@@ -78,6 +78,10 @@ type mockS3WriterServer struct {
 	mock.Mock
 }
 
+func s3ContentUrl(baseURL string) string {
+	return baseURL + "/content/"
+}
+
 func TestS3UpdaterUploadContent(t *testing.T) {
 	testUUID := uuid.NewUUID().String()
 	testData := []byte(testUUID)
@@ -87,7 +91,7 @@ func TestS3UpdaterUploadContent(t *testing.T) {
 	mockServer.On("UploadRequest", testUUID, "tid_1234", "application/json", date).Return(200)
 	server := mockServer.startMockS3WriterServer(t)
 
-	updater := newS3Updater(server.URL)
+	updater := newS3Updater(s3ContentUrl(server.URL))
 
 	err := updater.Upload(testData, "tid_1234", testUUID, date)
 	assert.NoError(t, err)
@@ -103,7 +107,7 @@ func TestS3UpdaterUploadContentErrorResponse(t *testing.T) {
 	mockServer.On("UploadRequest", testUUID, "tid_1234", "application/json", date).Return(503)
 	server := mockServer.startMockS3WriterServer(t)
 
-	updater := newS3Updater(server.URL)
+	updater := newS3Updater(s3ContentUrl(server.URL))
 
 	err := updater.Upload(testData, "tid_1234", testUUID, date)
 	assert.Error(t, err)
@@ -127,7 +131,7 @@ func TestS3UpdaterUploadContentErrorOnRequestDo(t *testing.T) {
 	mockClient.On("Do", mock.AnythingOfType("*http.Request")).Return(&http.Response{}, errors.New("http client err"))
 
 	updater := &S3Updater{apiClient: mockClient,
-		writerBaseURL: "http://server",
+		writerAPIURL: "http://server",
 	}
 
 	err := updater.Upload(nil, "tid_1234", "uuid1", "aDate")
@@ -143,7 +147,7 @@ func TestS3UpdaterDeleteContent(t *testing.T) {
 	mockServer.On("DeleteRequest", testUUID, "tid_1234").Return(204)
 	server := mockServer.startMockS3WriterServer(t)
 
-	updater := newS3Updater(server.URL)
+	updater := newS3Updater(s3ContentUrl(server.URL))
 
 	err := updater.Delete(testUUID, "tid_1234")
 	assert.NoError(t, err)
@@ -157,7 +161,7 @@ func TestS3UpdaterDeleteContentErrorResponse(t *testing.T) {
 	mockServer.On("DeleteRequest", testUUID, "tid_1234").Return(503)
 	server := mockServer.startMockS3WriterServer(t)
 
-	updater := newS3Updater(server.URL)
+	updater := newS3Updater(s3ContentUrl(server.URL))
 
 	err := updater.Delete(testUUID, "tid_1234")
 	assert.Error(t, err)
@@ -181,7 +185,7 @@ func TestS3UpdaterDeleteContentErrorOnRequestDo(t *testing.T) {
 	mockClient.On("Do", mock.AnythingOfType("*http.Request")).Return(&http.Response{}, errors.New("http client err"))
 
 	updater := &S3Updater{apiClient: mockClient,
-		writerBaseURL:   "http://server",
+		writerAPIURL:    "http://server",
 		writerHealthURL: "http://server",
 	}
 
@@ -236,7 +240,7 @@ func TestS3UpdaterCheckHealthErrorOnRequestDo(t *testing.T) {
 	mockClient.On("Do", mock.AnythingOfType("*http.Request")).Return(&http.Response{}, errors.New("http client err"))
 
 	updater := &S3Updater{
-		writerBaseURL:   "http://server",
+		writerAPIURL:    "http://server",
 		writerHealthURL: "http://server",
 		healthClient:    mockClient,
 	}
@@ -248,7 +252,7 @@ func TestS3UpdaterCheckHealthErrorOnRequestDo(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
-func newS3Updater(writerBaseURL string) *S3Updater {
+func newS3Updater(writerAPIUrl string) *S3Updater {
 	client := &http.Client{}
-	return NewS3Updater(client, client, writerBaseURL, writerBaseURL+"/__gtg")
+	return NewS3Updater(client, client, writerAPIUrl, writerAPIUrl+"/__gtg")
 }

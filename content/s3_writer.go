@@ -6,8 +6,6 @@ import (
 	"net/http"
 )
 
-const s3WriterPath = "/content/"
-
 type updater interface {
 	Upload(content []byte, tid, uuid, date string) error
 	Delete(uuid, tid string) error
@@ -16,21 +14,21 @@ type updater interface {
 type S3Updater struct {
 	apiClient       httpClient
 	healthClient    httpClient
-	writerBaseURL   string
+	writerAPIURL    string
 	writerHealthURL string
 }
 
-func NewS3Updater(apiClient, healthClient httpClient, writerBaseURL string, writerHealthURL string) *S3Updater {
+func NewS3Updater(apiClient, healthClient httpClient, writerAPIURL string, writerHealthURL string) *S3Updater {
 	return &S3Updater{
 		apiClient:       apiClient,
 		healthClient:    healthClient,
-		writerBaseURL:   writerBaseURL,
+		writerAPIURL:    writerAPIURL,
 		writerHealthURL: writerHealthURL,
 	}
 }
 
 func (u *S3Updater) Delete(uuid, tid string) error {
-	req, err := http.NewRequest("DELETE", u.writerBaseURL+s3WriterPath+uuid, nil)
+	req, err := http.NewRequest("DELETE", u.writerAPIURL+uuid, nil)
 	if err != nil {
 		return err
 	}
@@ -57,7 +55,7 @@ func (u *S3Updater) Upload(content []byte, tid, uuid, date string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("PUT", u.writerBaseURL+s3WriterPath+uuid+"?date="+date, buf)
+	req, err := http.NewRequest("PUT", u.writerAPIURL+uuid+"?date="+date, buf)
 	if err != nil {
 		return err
 	}

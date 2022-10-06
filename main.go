@@ -91,11 +91,11 @@ func main() {
 		Desc:   "Health URL to enriched content endpoint",
 		EnvVar: "ENRICHED_CONTENT_HEALTH_URL",
 	})
-	s3WriterBaseURL := app.String(cli.StringOpt{
-		Name:   "s3WriterBaseURL",
-		Value:  "http://localhost:8080",
-		Desc:   "Base URL to S3 writer endpoint",
-		EnvVar: "S3_WRITER_BASE_URL",
+	s3WriterAPIURL := app.String(cli.StringOpt{
+		Name:   "s3WriterAPIURL",
+		Value:  "http://localhost:8080/content/",
+		Desc:   "API URL to S3 writer endpoint",
+		EnvVar: "S3_WRITER_API_URL",
 	})
 	s3WriterHealthURL := app.String(cli.StringOpt{
 		Name:   "s3WriterHealthURL",
@@ -194,7 +194,7 @@ func main() {
 		healthClient := newHealthClient()
 
 		fetcher := content.NewEnrichedContentFetcher(apiClient, healthClient, *enrichedContentAPIURL, *enrichedContentHealthURL, *xPolicyHeaderValues, *authorization)
-		uploader := content.NewS3Updater(apiClient, healthClient, *s3WriterBaseURL, *s3WriterHealthURL)
+		uploader := content.NewS3Updater(apiClient, healthClient, *s3WriterAPIURL, *s3WriterHealthURL)
 
 		exporter := content.NewExporter(fetcher, uploader)
 		fullExporter := export.NewFullExporter(20, exporter)
