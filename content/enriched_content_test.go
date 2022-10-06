@@ -2,7 +2,6 @@ package content
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,11 +13,11 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-type mockHttpClient struct {
+type mockHTTPClient struct {
 	mock.Mock
 }
 
-func (c *mockHttpClient) Do(req *http.Request) (resp *http.Response, err error) {
+func (c *mockHTTPClient) Do(req *http.Request) (resp *http.Response, err error) {
 	args := c.Called(req)
 	return args.Get(0).(*http.Response), args.Error(1)
 }
@@ -44,7 +43,8 @@ func (m *mockEnrichedContentServer) startMockEnrichedContentServer(t *testing.T)
 
 		respStatus, resp := m.GetRequest(authHeader, tid, acceptHeader, xPolicyHeader)
 		w.WriteHeader(respStatus)
-		w.Write(resp)
+		_, err := w.Write(resp)
+		assert.NoError(t, err)
 	}).Methods(http.MethodGet)
 
 	router.HandleFunc("/__gtg", func(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +68,7 @@ func (m *mockEnrichedContentServer) GetRequest(authHeader, tid, acceptHeader, xP
 	return args.Int(0), resp
 }
 
-func enrichedContentUrl(baseURL string) string {
+func enrichedContentURL(baseURL string) string {
 	return baseURL + "/enrichedcontent/"
 }
 
@@ -80,14 +80,14 @@ func TestEnrichedContentFetcherGetValidContent(t *testing.T) {
 
 	server := mockServer.startMockEnrichedContentServer(t)
 
-	fetcher := newEnrichedContentFetcher(enrichedContentUrl(server.URL), "", "")
+	fetcher := newEnrichedContentFetcher(enrichedContentURL(server.URL), "", "")
 
 	resp, err := fetcher.GetContent(testUUID, "tid_1234")
 
 	assert.NoError(t, err)
 	mockServer.AssertExpectations(t)
 	assert.Equal(t, len(testData), len(resp))
-	assert.Equal(t, testUUID, fmt.Sprintf("%s", resp))
+	assert.Equal(t, testUUID, string(resp))
 }
 
 func TestEnrichedContentFetcherGetValidContentWithAuthorizationAndXPolicy(t *testing.T) {
@@ -100,13 +100,13 @@ func TestEnrichedContentFetcherGetValidContentWithAuthorizationAndXPolicy(t *tes
 
 	server := mockServer.startMockEnrichedContentServer(t)
 
-	fetcher := newEnrichedContentFetcher(enrichedContentUrl(server.URL), auth, xPolicies)
+	fetcher := newEnrichedContentFetcher(enrichedContentURL(server.URL), auth, xPolicies)
 
 	resp, err := fetcher.GetContent(testUUID, "tid_1234")
 	assert.NoError(t, err)
 	mockServer.AssertExpectations(t)
 	assert.Equal(t, len(testData), len(resp))
-	assert.Equal(t, testUUID, fmt.Sprintf("%s", resp))
+	assert.Equal(t, testUUID, string(resp))
 }
 
 func TestEnrichedContentFetcherGetContentWithAuthError(t *testing.T) {
@@ -118,7 +118,7 @@ func TestEnrichedContentFetcherGetContentWithAuthError(t *testing.T) {
 
 	server := mockServer.startMockEnrichedContentServer(t)
 
-	fetcher := newEnrichedContentFetcher(enrichedContentUrl(server.URL), auth, xPolicies)
+	fetcher := newEnrichedContentFetcher(enrichedContentURL(server.URL), auth, xPolicies)
 
 	_, err := fetcher.GetContent(testUUID, "tid_1234")
 	assert.Error(t, err)
@@ -140,7 +140,7 @@ func TestEnrichedContentFetcherGetContentWithErrorOnNewRequest(t *testing.T) {
 }
 
 func TestEnrichedContentFetcherGetContentErrorOnRequestDo(t *testing.T) {
-	mockClient := new(mockHttpClient)
+	mockClient := new(mockHTTPClient)
 	mockClient.On("Do", mock.AnythingOfType("*http.Request")).Return(&http.Response{}, errors.New("http client err"))
 
 	fetcher := &EnrichedContentFetcher{apiClient: mockClient,
@@ -195,7 +195,7 @@ func TestEnrichedContentFetcherCheckHealthErrorOnNewRequest(t *testing.T) {
 }
 
 func TestEnrichedContentFetcherCheckHealthErrorOnRequestDo(t *testing.T) {
-	mockClient := new(mockHttpClient)
+	mockClient := new(mockHTTPClient)
 	mockClient.On("Do", mock.AnythingOfType("*http.Request")).Return(&http.Response{}, errors.New("http client err"))
 
 	fetcher := &EnrichedContentFetcher{

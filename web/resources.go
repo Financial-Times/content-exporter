@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -12,7 +12,7 @@ import (
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/go-logger/v2"
-	"github.com/Financial-Times/transactionid-utils-go"
+	transactionidutils "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/gorilla/mux"
 	"github.com/pborman/uuid"
 )
@@ -161,7 +161,7 @@ func sendFailedExportResponse(writer http.ResponseWriter, msg string, log *logge
 
 func getCandidateUUIDs(request *http.Request, log *logger.UPPLogger) (candidates []string) {
 	var result map[string]interface{}
-	body, err := ioutil.ReadAll(request.Body)
+	body, err := io.ReadAll(request.Body)
 	if err != nil {
 		log.WithError(err).Debug("No valid POST body found, thus no candidate ids to export")
 		return

@@ -97,7 +97,7 @@ func findUUIDsQueryElements(candidates []string) (bson.M, bson.M) {
 			}},
 		},
 	}
-	if candidates != nil && len(candidates) != 0 {
+	if len(candidates) != 0 {
 		andQuery = append(andQuery, bson.M{"uuid": bson.M{"$in": candidates}})
 	}
 

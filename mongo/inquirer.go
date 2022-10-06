@@ -51,13 +51,15 @@ func (m *Inquirer) Inquire(ctx context.Context, candidates []string) (chan *cont
 
 		for cur.Next(ctx) {
 			var result bson.M
-			if err := cur.Decode(&result); err != nil {
+			if err = cur.Decode(&result); err != nil {
 				m.log.WithError(err).Warn("Failed to decode document")
 				continue
 			}
 
 			counter++
-			stub, err := mapStub(result)
+
+			var stub *content.Stub
+			stub, err = mapStub(result)
 			if err != nil {
 				m.log.WithError(err).Warn("Failed to map document")
 				continue

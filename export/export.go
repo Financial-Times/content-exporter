@@ -25,9 +25,9 @@ const (
 )
 
 type Job struct {
-	sync.RWMutex
-	wg                       sync.WaitGroup
-	Log                      *logger.UPPLogger
+	lock                     *sync.RWMutex
+	wg                       *sync.WaitGroup
+	Log                      *logger.UPPLogger  `json:"-"`
 	NrWorker                 int                `json:"-"`
 	DocIds                   chan *content.Stub `json:"-"`
 	ID                       string             `json:"ID"`
@@ -94,8 +94,8 @@ func (fe *Service) IsFullExportRunning() bool {
 }
 
 func (job *Job) Copy() Job {
-	job.Lock()
-	defer job.Unlock()
+	job.lock.Lock()
+	defer job.lock.Unlock()
 	return Job{
 		Progress: job.Progress,
 		Status:   job.Status,
@@ -133,9 +133,9 @@ func (job *Job) RunFullExport(tid string, export func(string, *content.Stub) err
 					WithError(err).
 					Error("Failed to process document")
 
-				job.Lock()
+				job.lock.Lock()
 				job.Failed = append(job.Failed, doc.UUID)
-				job.Unlock()
+				job.lock.Unlock()
 			}
 			<-worker
 		}()

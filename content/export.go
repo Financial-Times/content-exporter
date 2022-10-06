@@ -42,7 +42,7 @@ func (e *Exporter) Delete(uuid, tid string) error {
 }
 
 func GetDateOrDefault(payload map[string]interface{}) (date string) {
-	docFirstPublishedDate, _ := payload["firstPublishedDate"]
+	docFirstPublishedDate := payload["firstPublishedDate"]
 	d, ok := docFirstPublishedDate.(string)
 	if ok {
 		date = strings.Split(d, "T")[0]
@@ -50,7 +50,7 @@ func GetDateOrDefault(payload map[string]interface{}) (date string) {
 	if date != "" {
 		return
 	}
-	docPublishedDate, _ := payload["publishedDate"]
+	docPublishedDate := payload["publishedDate"]
 	d, ok = docPublishedDate.(string)
 	if ok {
 		date = strings.Split(d, "T")[0]
