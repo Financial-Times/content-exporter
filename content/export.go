@@ -41,22 +41,17 @@ func (e *Exporter) Delete(uuid, tid string) error {
 	return e.updater.Delete(uuid, tid)
 }
 
-func GetDateOrDefault(payload map[string]interface{}) (date string) {
-	docFirstPublishedDate := payload["firstPublishedDate"]
-	d, ok := docFirstPublishedDate.(string)
-	if ok {
-		date = strings.Split(d, "T")[0]
+func GetDateOrDefault(payload map[string]interface{}) string {
+	if firstPublishedDate, ok := payload["firstPublishedDate"].(string); ok {
+		if date := strings.Split(firstPublishedDate, "T")[0]; date != "" {
+			return date
+		}
 	}
-	if date != "" {
-		return
-	}
-	docPublishedDate := payload["publishedDate"]
-	d, ok = docPublishedDate.(string)
-	if ok {
-		date = strings.Split(d, "T")[0]
-	}
-	if date != "" {
-		return
+
+	if publishedDate, ok := payload["publishedDate"].(string); ok {
+		if date := strings.Split(publishedDate, "T")[0]; date != "" {
+			return date
+		}
 	}
 
 	return DefaultDate
