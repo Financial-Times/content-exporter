@@ -15,16 +15,18 @@ type fetcher interface {
 }
 
 type EnrichedContentFetcher struct {
-	client                   httpClient
+	apiClient                httpClient
+	healthClient             httpClient
 	enrichedContentAPIURL    string
 	enrichedContentHealthURL string
 	xPolicyHeaderValues      string
 	authorization            string
 }
 
-func NewEnrichedContentFetcher(client httpClient, enrichedContentAPIURL, enrichedContentHealthURL, xPolicyHeaderValues, authorization string) *EnrichedContentFetcher {
+func NewEnrichedContentFetcher(apiClient, healthClient httpClient, enrichedContentAPIURL, enrichedContentHealthURL, xPolicyHeaderValues, authorization string) *EnrichedContentFetcher {
 	return &EnrichedContentFetcher{
-		client:                   client,
+		apiClient:                apiClient,
+		healthClient:             healthClient,
 		enrichedContentAPIURL:    enrichedContentAPIURL,
 		enrichedContentHealthURL: enrichedContentHealthURL,
 		xPolicyHeaderValues:      xPolicyHeaderValues,
@@ -48,7 +50,7 @@ func (e *EnrichedContentFetcher) GetContent(uuid, tid string) ([]byte, error) {
 		req.Header.Add("Authorization", e.authorization)
 	}
 
-	resp, err := e.client.Do(req)
+	resp, err := e.apiClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +63,7 @@ func (e *EnrichedContentFetcher) GetContent(uuid, tid string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func (e *EnrichedContentFetcher) CheckHealth(client httpClient) (string, error) {
+func (e *EnrichedContentFetcher) CheckHealth() (string, error) {
 	req, err := http.NewRequest("GET", e.enrichedContentHealthURL, nil)
 	if err != nil {
 		return "", err
@@ -70,7 +72,7 @@ func (e *EnrichedContentFetcher) CheckHealth(client httpClient) (string, error) 
 	if e.authorization != "" {
 		req.Header.Add("Authorization", e.authorization)
 	}
-	resp, err := client.Do(req)
+	resp, err := e.healthClient.Do(req)
 	if err != nil {
 		return "", err
 	}

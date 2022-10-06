@@ -127,7 +127,7 @@ func TestEnrichedContentFetcherGetContentWithAuthError(t *testing.T) {
 }
 
 func TestEnrichedContentFetcherGetContentWithErrorOnNewRequest(t *testing.T) {
-	fetcher := &EnrichedContentFetcher{client: &http.Client{},
+	fetcher := &EnrichedContentFetcher{apiClient: &http.Client{},
 		enrichedContentAPIURL: "://",
 	}
 
@@ -143,7 +143,7 @@ func TestEnrichedContentFetcherGetContentErrorOnRequestDo(t *testing.T) {
 	mockClient := new(mockHttpClient)
 	mockClient.On("Do", mock.AnythingOfType("*http.Request")).Return(&http.Response{}, errors.New("http client err"))
 
-	fetcher := &EnrichedContentFetcher{client: mockClient,
+	fetcher := &EnrichedContentFetcher{apiClient: mockClient,
 		enrichedContentAPIURL: "http://server",
 	}
 
@@ -160,7 +160,7 @@ func TestEnrichedContentFetcherCheckHealth(t *testing.T) {
 
 	fetcher := newEnrichedContentFetcher(server.URL, "", "")
 
-	resp, err := fetcher.CheckHealth(&http.Client{})
+	resp, err := fetcher.CheckHealth()
 	assert.NoError(t, err)
 	assert.Equal(t, "EnrichedContent fetcher is good to go.", resp)
 	mockServer.AssertExpectations(t)
@@ -173,7 +173,7 @@ func TestEnrichedContentFetcherCheckHealthError(t *testing.T) {
 
 	fetcher := newEnrichedContentFetcher(server.URL, "", "")
 
-	resp, err := fetcher.CheckHealth(&http.Client{})
+	resp, err := fetcher.CheckHealth()
 	assert.Error(t, err)
 	assert.Equal(t, "", resp)
 	mockServer.AssertExpectations(t)
@@ -184,7 +184,7 @@ func TestEnrichedContentFetcherCheckHealthErrorOnNewRequest(t *testing.T) {
 		enrichedContentHealthURL: "://",
 	}
 
-	resp, err := fetcher.CheckHealth(&http.Client{})
+	resp, err := fetcher.CheckHealth()
 
 	assert.Error(t, err)
 	assert.Equal(t, "", resp)
@@ -201,20 +201,17 @@ func TestEnrichedContentFetcherCheckHealthErrorOnRequestDo(t *testing.T) {
 	fetcher := &EnrichedContentFetcher{
 		enrichedContentHealthURL: "http://server",
 		authorization:            "some-auth",
+		healthClient:             mockClient,
 	}
 
-	resp, err := fetcher.CheckHealth(mockClient)
+	resp, err := fetcher.CheckHealth()
 	assert.Error(t, err)
 	assert.EqualError(t, err, "http client err")
 	assert.Equal(t, "", resp)
 	mockClient.AssertExpectations(t)
 }
 
-func newEnrichedContentFetcher(enrichedContentBaseURL, authorization, xPolicyHeaderValues string) *EnrichedContentFetcher {
-	return &EnrichedContentFetcher{client: &http.Client{},
-		enrichedContentAPIURL:    enrichedContentBaseURL,
-		enrichedContentHealthURL: enrichedContentBaseURL + "/__gtg",
-		xPolicyHeaderValues:      xPolicyHeaderValues,
-		authorization:            authorization,
-	}
+func newEnrichedContentFetcher(enrichedContentAPIURL, auth, xPolicies string) *EnrichedContentFetcher {
+	client := &http.Client{}
+	return NewEnrichedContentFetcher(client, client, enrichedContentAPIURL, enrichedContentAPIURL+"/__gtg", xPolicies, auth)
 }

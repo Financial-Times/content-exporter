@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -191,24 +190,11 @@ func main() {
 			log.WithError(err).Fatal("Error establishing mongo connection")
 		}
 
-		tr := &http.Transport{
-			MaxIdleConnsPerHost: 128,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-		}
-		c := &http.Client{
-			Transport: tr,
-			Timeout:   30 * time.Second,
-		}
-		client := pester.NewExtendedClient(c)
-		client.Backoff = pester.ExponentialBackoff
-		client.MaxRetries = 3
-		client.Concurrency = 1
+		apiClient := newAPIClient()
+		healthClient := newHealthClient()
 
-		fetcher := content.NewEnrichedContentFetcher(client, *enrichedContentAPIURL, *enrichedContentHealthURL, *xPolicyHeaderValues, *authorization)
-		uploader := content.NewS3Updater(client, *s3WriterBaseURL, *s3WriterHealthURL)
+		fetcher := content.NewEnrichedContentFetcher(apiClient, healthClient, *enrichedContentAPIURL, *enrichedContentHealthURL, *xPolicyHeaderValues, *authorization)
+		uploader := content.NewS3Updater(apiClient, healthClient, *s3WriterBaseURL, *s3WriterHealthURL)
 
 		exporter := content.NewExporter(fetcher, uploader)
 		fullExporter := export.NewFullExporter(20, exporter)
@@ -233,25 +219,10 @@ func main() {
 			log.Warn("INCREMENTAL export is not enabled")
 		}
 
-		healthService := newHealthService(
-			&healthConfig{
-				appSystemCode:          *appSystemCode,
-				appName:                *appName,
-				port:                   *port,
-				db:                     mongoClient,
-				enrichedContentFetcher: fetcher,
-				s3Uploader:             uploader,
-				queueHandler:           kafkaListener,
-			}, fullExporter)
-
-		go serveEndpoints(*appSystemCode, *appName, *port, log, web.NewRequestHandler(
-			fullExporter,
-			mongo.NewInquirer(mongoClient, log),
-			locker,
-			*isIncExportEnabled,
-			*contentRetrievalThrottle,
-			log,
-		), healthService)
+		healthService := newHealthService(mongoClient, fetcher, uploader, kafkaListener, fullExporter)
+		inquirer := mongo.NewInquirer(mongoClient, log)
+		requestHandler := web.NewRequestHandler(fullExporter, inquirer, locker, *isIncExportEnabled, *contentRetrievalThrottle, log)
+		go serveEndpoints(*appSystemCode, *appName, *port, log, requestHandler, healthService)
 
 		log.
 			WithField("event", "service_started").
@@ -264,6 +235,41 @@ func main() {
 	err := app.Run(os.Args)
 	if err != nil {
 		log.WithError(err).Fatal("App could not start")
+	}
+}
+
+func newAPIClient() *pester.Client {
+	tr := &http.Transport{
+		MaxIdleConnsPerHost: 128,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+	}
+	c := &http.Client{
+		Transport: tr,
+		Timeout:   30 * time.Second,
+	}
+	client := pester.NewExtendedClient(c)
+	client.Backoff = pester.ExponentialBackoff
+	client.MaxRetries = 3
+	client.Concurrency = 1
+
+	return client
+}
+
+func newHealthClient() *http.Client {
+	tr := &http.Transport{
+		MaxIdleConnsPerHost: 10,
+		DialContext: (&net.Dialer{
+			Timeout:   3 * time.Second,
+			KeepAlive: 3 * time.Second,
+		}).DialContext,
+	}
+
+	return &http.Client{
+		Transport: tr,
+		Timeout:   3 * time.Second,
 	}
 }
 
@@ -296,10 +302,9 @@ func prepareIncrementalExport(
 }
 
 func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, requestHandler *web.RequestHandler, healthService *healthService) {
-
 	serveMux := http.NewServeMux()
 
-	hc := health.HealthCheck{SystemCode: appSystemCode, Name: appName, Description: appDescription, Checks: healthService.checks}
+	hc := health.HealthCheck{SystemCode: appSystemCode, Name: appName, Description: appDescription, Checks: healthService.healthChecks}
 	serveMux.HandleFunc(healthPath, health.Handler(hc))
 	serveMux.HandleFunc(status.GTGPath, status.NewGoodToGoHandler(healthService.GTG))
 	serveMux.HandleFunc(status.BuildInfoPath, status.BuildInfoHandler)
@@ -351,7 +356,7 @@ func waitForSignal() {
 
 func checkMongoURLs(providedMongoURLs string) error {
 	if providedMongoURLs == "" {
-		return errors.New("MongoDB urls are missing")
+		return fmt.Errorf("mongoDB urls are missing")
 	}
 
 	mongoURLs := strings.Split(providedMongoURLs, ",")
@@ -359,10 +364,10 @@ func checkMongoURLs(providedMongoURLs string) error {
 	for _, mongoURL := range mongoURLs {
 		host, port, err := net.SplitHostPort(mongoURL)
 		if err != nil {
-			return fmt.Errorf("cannot split MongoDB URL: %s into host and port. Error is: %s", mongoURL, err.Error())
+			return fmt.Errorf("cannot split MongoDB URL: %s into host and port: %w", mongoURL, err)
 		}
 		if host == "" || port == "" {
-			return fmt.Errorf("one of the MongoDB URLs is incomplete: %s. It should have host and port", mongoURL)
+			return fmt.Errorf("one of the MongoDB URLs is incomplete: %s", mongoURL)
 		}
 	}
 

@@ -2,13 +2,7 @@ package main
 
 import (
 	"fmt"
-	"net"
-	"net/http"
-	"time"
 
-	"github.com/Financial-Times/content-exporter/content"
-	"github.com/Financial-Times/content-exporter/mongo"
-	"github.com/Financial-Times/content-exporter/queue"
 	health "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/service-status-go/gtg"
 )
@@ -19,112 +13,110 @@ const (
 )
 
 type healthService struct {
-	config        *healthConfig
-	checks        []health.Check
-	client        *http.Client
-	statusManager exportStatusManager
+	healthChecks []health.Check
+	gtgChecks    []gtg.StatusChecker
 }
 
-type healthConfig struct {
-	appSystemCode          string
-	appName                string
-	port                   string
-	db                     *mongo.Client
-	enrichedContentFetcher *content.EnrichedContentFetcher
-	s3Uploader             *content.S3Updater
-	queueHandler           *queue.Listener
+type healthChecker interface {
+	CheckHealth() (string, error)
+}
+
+type queueChecker interface {
+	healthChecker
+	MonitorCheck() (string, error)
 }
 
 type exportStatusManager interface {
 	IsFullExportRunning() bool
 }
 
-func newHealthService(config *healthConfig, statusManager exportStatusManager) *healthService {
-	tr := &http.Transport{
-		MaxIdleConnsPerHost: 10,
-		DialContext: (&net.Dialer{
-			Timeout:   3 * time.Second,
-			KeepAlive: 3 * time.Second,
-		}).DialContext,
+func newHealthService(dbChecker, readChecker, writeChecker healthChecker, queueChecker queueChecker, statusManager exportStatusManager) *healthService {
+	mongoCheck := newMongoCheck(dbChecker)
+	readerCheck := newReadEndpointCheck(readChecker)
+	writerCheck := newS3WriterCheck(writeChecker)
+
+	healthChecks := []health.Check{mongoCheck, readerCheck, writerCheck}
+	gtgChecks := []health.Check{mongoCheck, readerCheck, writerCheck}
+
+	if queueChecker != nil {
+		kafkaConnectivityCheck := newKafkaConnectivityCheck(queueChecker)
+		kafkaMonitorCheck := newKafkaMonitorCheck(queueChecker, statusManager)
+
+		healthChecks = append(healthChecks, kafkaConnectivityCheck, kafkaMonitorCheck)
+		gtgChecks = append(gtgChecks, kafkaConnectivityCheck)
 	}
-	httpClient := &http.Client{
-		Transport: tr,
-		Timeout:   3 * time.Second,
+
+	gtgCheckers := make([]gtg.StatusChecker, 0, len(gtgChecks))
+	for _, c := range gtgChecks {
+		gtgCheckers = append(gtgCheckers, gtgCheck(c))
 	}
-	service := &healthService{config: config, client: httpClient, statusManager: statusManager}
-	service.checks = []health.Check{
-		service.MongoCheck(),
-		service.ReadEndpointCheck(),
-		service.S3WriterCheck(),
+
+	return &healthService{
+		healthChecks: healthChecks,
+		gtgChecks:    gtgCheckers,
 	}
-	if config.queueHandler != nil {
-		service.checks = append(service.checks, service.KafkaCheck(), service.KafkaMonitor())
-	}
-	return service
 }
 
-func (service *healthService) MongoCheck() health.Check {
+func newMongoCheck(checker healthChecker) health.Check {
 	return health.Check{
 		Name:             "CheckConnectivityToMongoDatabase",
 		BusinessImpact:   "No Business Impact.",
 		PanicGuide:       "https://runbooks.in.ft.com/content-exporter",
 		Severity:         2,
 		TechnicalSummary: "The service is unable to connect to MongoDB. FULL or TARGETED export won't work because of this",
-		Checker:          service.config.db.CheckHealth,
+		Checker:          checker.CheckHealth,
 	}
 }
 
-func (service *healthService) ReadEndpointCheck() health.Check {
+func newReadEndpointCheck(checker healthChecker) health.Check {
 	return health.Check{
 		Name:             "CheckConnectivityToApiPolicyComponent",
 		BusinessImpact:   "No Business Impact.",
 		PanicGuide:       "https://runbooks.in.ft.com/content-exporter",
 		Severity:         2,
 		TechnicalSummary: "The service is unable to connect to Api Policy Component. Neither FULL nor INCREMENTAL or TARGETED export won't work because of this",
-		Checker: func() (string, error) {
-			return service.config.enrichedContentFetcher.CheckHealth(service.client)
-		},
+		Checker:          checker.CheckHealth,
 	}
 }
 
-func (service *healthService) S3WriterCheck() health.Check {
+func newS3WriterCheck(checker healthChecker) health.Check {
 	return health.Check{
 		Name:             "CheckConnectivityToContentRWS3",
 		BusinessImpact:   "No Business Impact.",
 		PanicGuide:       "https://runbooks.in.ft.com/content-exporter",
 		Severity:         2,
 		TechnicalSummary: "The service is unable to connect to Content-RW-S3. Neither FULL nor INCREMENTAL or TARGETED export won't work because of this",
-		Checker: func() (string, error) {
-			return service.config.s3Uploader.CheckHealth(service.client)
-		},
+		Checker:          checker.CheckHealth,
 	}
 }
 
-func (service *healthService) KafkaCheck() health.Check {
+func newKafkaConnectivityCheck(checker healthChecker) health.Check {
 	return health.Check{
 		Name:             "CheckConnectivityToKafka",
 		BusinessImpact:   "No Business Impact.",
 		PanicGuide:       "https://runbooks.in.ft.com/content-exporter",
 		Severity:         2,
 		TechnicalSummary: "The service is unable to connect to Kafka. INCREMENTAL export won't work because of this",
-		Checker:          service.config.queueHandler.CheckHealth,
+		Checker:          checker.CheckHealth,
 	}
 }
 
-func (service *healthService) KafkaMonitor() health.Check {
+func newKafkaMonitorCheck(checker queueChecker, statusManager exportStatusManager) health.Check {
 	return health.Check{
 		Name:             "KafkaClientLag",
 		BusinessImpact:   "No Business Impact.",
 		PanicGuide:       "https://runbooks.in.ft.com/content-exporter",
 		Severity:         3,
 		TechnicalSummary: "Messages awaiting handling exceed the configured lag tolerance. Check if Kafka consumer is stuck.",
-		Checker:          service.customKafkaMonitorCheck,
+		Checker: func() (string, error) {
+			return customKafkaMonitorCheck(checker, statusManager)
+		},
 	}
 }
 
-func (service *healthService) customKafkaMonitorCheck() (string, error) {
-	status, err := service.config.queueHandler.MonitorCheck()
-	if err == nil || !service.statusManager.IsFullExportRunning() {
+func customKafkaMonitorCheck(monitoringChecker queueChecker, statusManager exportStatusManager) (string, error) {
+	status, err := monitoringChecker.MonitorCheck()
+	if err == nil || !statusManager.IsFullExportRunning() {
 		return status, err
 	}
 	msg := fmt.Sprintf("%s: %s", fullExportMessage, err.Error())
@@ -132,25 +124,15 @@ func (service *healthService) customKafkaMonitorCheck() (string, error) {
 }
 
 func (service *healthService) GTG() gtg.Status {
-	mongoCheck := func() gtg.Status {
-		return service.gtgCheck(service.MongoCheck())
-	}
-	readApiCheck := func() gtg.Status {
-		return service.gtgCheck(service.ReadEndpointCheck())
-	}
-	s3WriterCheck := func() gtg.Status {
-		return service.gtgCheck(service.S3WriterCheck())
-	}
-	return gtg.FailFastParallelCheck([]gtg.StatusChecker{
-		mongoCheck,
-		readApiCheck,
-		s3WriterCheck,
-	})()
+	return gtg.FailFastParallelCheck(service.gtgChecks)()
 }
 
-func (service *healthService) gtgCheck(check health.Check) gtg.Status {
-	if _, err := check.Checker(); err != nil {
-		return gtg.Status{GoodToGo: false, Message: err.Error()}
+func gtgCheck(check health.Check) func() gtg.Status {
+	return func() gtg.Status {
+		if _, err := check.Checker(); err != nil {
+			return gtg.Status{GoodToGo: false, Message: err.Error()}
+		}
+
+		return gtg.Status{GoodToGo: true}
 	}
-	return gtg.Status{GoodToGo: true}
 }

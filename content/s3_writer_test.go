@@ -126,7 +126,7 @@ func TestS3UpdaterUploadContentErrorOnRequestDo(t *testing.T) {
 	mockClient := new(mockHttpClient)
 	mockClient.On("Do", mock.AnythingOfType("*http.Request")).Return(&http.Response{}, errors.New("http client err"))
 
-	updater := &S3Updater{client: mockClient,
+	updater := &S3Updater{apiClient: mockClient,
 		writerBaseURL: "http://server",
 	}
 
@@ -180,7 +180,7 @@ func TestS3UpdaterDeleteContentErrorOnRequestDo(t *testing.T) {
 	mockClient := new(mockHttpClient)
 	mockClient.On("Do", mock.AnythingOfType("*http.Request")).Return(&http.Response{}, errors.New("http client err"))
 
-	updater := &S3Updater{client: mockClient,
+	updater := &S3Updater{apiClient: mockClient,
 		writerBaseURL:   "http://server",
 		writerHealthURL: "http://server",
 	}
@@ -198,7 +198,7 @@ func TestS3UpdaterCheckHealth(t *testing.T) {
 
 	updater := newS3Updater(server.URL)
 
-	resp, err := updater.CheckHealth(&http.Client{})
+	resp, err := updater.CheckHealth()
 	assert.NoError(t, err)
 	assert.Equal(t, "S3 Writer is good to go.", resp)
 	mockServer.AssertExpectations(t)
@@ -211,7 +211,7 @@ func TestS3UpdaterCheckHealthError(t *testing.T) {
 
 	updater := newS3Updater(server.URL)
 
-	resp, err := updater.CheckHealth(&http.Client{})
+	resp, err := updater.CheckHealth()
 	assert.Error(t, err)
 	assert.Equal(t, "", resp)
 	mockServer.AssertExpectations(t)
@@ -222,7 +222,7 @@ func TestS3UpdaterCheckHealthErrorOnNewRequest(t *testing.T) {
 		writerHealthURL: "://",
 	}
 
-	resp, err := updater.CheckHealth(&http.Client{})
+	resp, err := updater.CheckHealth()
 	assert.Error(t, err)
 	assert.Equal(t, "", resp)
 
@@ -238,9 +238,10 @@ func TestS3UpdaterCheckHealthErrorOnRequestDo(t *testing.T) {
 	updater := &S3Updater{
 		writerBaseURL:   "http://server",
 		writerHealthURL: "http://server",
+		healthClient:    mockClient,
 	}
 
-	resp, err := updater.CheckHealth(mockClient)
+	resp, err := updater.CheckHealth()
 	assert.Error(t, err)
 	assert.EqualError(t, err, "http client err")
 	assert.Equal(t, "", resp)
@@ -248,5 +249,6 @@ func TestS3UpdaterCheckHealthErrorOnRequestDo(t *testing.T) {
 }
 
 func newS3Updater(writerBaseURL string) *S3Updater {
-	return NewS3Updater(&http.Client{}, writerBaseURL, writerBaseURL+"/__gtg")
+	client := &http.Client{}
+	return NewS3Updater(client, client, writerBaseURL, writerBaseURL+"/__gtg")
 }

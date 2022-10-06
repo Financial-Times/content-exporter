@@ -14,14 +14,16 @@ type updater interface {
 }
 
 type S3Updater struct {
-	client          httpClient
+	apiClient       httpClient
+	healthClient    httpClient
 	writerBaseURL   string
 	writerHealthURL string
 }
 
-func NewS3Updater(client httpClient, writerBaseURL string, writerHealthURL string) *S3Updater {
+func NewS3Updater(apiClient, healthClient httpClient, writerBaseURL string, writerHealthURL string) *S3Updater {
 	return &S3Updater{
-		client:          client,
+		apiClient:       apiClient,
+		healthClient:    healthClient,
 		writerBaseURL:   writerBaseURL,
 		writerHealthURL: writerHealthURL,
 	}
@@ -35,7 +37,7 @@ func (u *S3Updater) Delete(uuid, tid string) error {
 	req.Header.Add("User-Agent", "UPP Content Exporter")
 	req.Header.Add("X-Request-Id", tid)
 
-	resp, err := u.client.Do(req)
+	resp, err := u.apiClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -63,7 +65,7 @@ func (u *S3Updater) Upload(content []byte, tid, uuid, date string) error {
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("X-Request-Id", tid)
 
-	resp, err := u.client.Do(req)
+	resp, err := u.apiClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -76,13 +78,13 @@ func (u *S3Updater) Upload(content []byte, tid, uuid, date string) error {
 	return nil
 }
 
-func (u *S3Updater) CheckHealth(client httpClient) (string, error) {
+func (u *S3Updater) CheckHealth() (string, error) {
 	req, err := http.NewRequest("GET", u.writerHealthURL, nil)
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := client.Do(req)
+	resp, err := u.healthClient.Do(req)
 	if err != nil {
 		return "", err
 	}
