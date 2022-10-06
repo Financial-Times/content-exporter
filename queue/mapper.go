@@ -8,35 +8,28 @@ import (
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
-	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/kafka-client-go/v3"
 )
 
 const canBeDistributedYes = "yes"
 
-// UUIDRegexp enables to check if a string matches a UUID
-var UUIDRegexp = regexp.MustCompile("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}")
+// uuidRegexp enables to check if a string matches a UUID
+var uuidRegexp = regexp.MustCompile("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}")
 
-type MessageMapper interface {
-	MapNotification(msg kafka.FTMessage) (*Notification, error)
+type MessageMapper struct {
+	originAllowlistRegex *regexp.Regexp
+	allowedContentTypes  map[string]bool
 }
 
-type KafkaMessageMapper struct {
-	ContentOriginAllowlistRegex *regexp.Regexp
-	AllowedContentTypes         map[string]bool
-	log                         *logger.UPPLogger
-}
-
-func NewKafkaMessageMapper(contentOriginAllowlist *regexp.Regexp, allowedContentTypes []string, log *logger.UPPLogger) *KafkaMessageMapper {
+func NewMessageMapper(originAllowlist *regexp.Regexp, allowedContentTypes []string) *MessageMapper {
 	allowedTypes := make(map[string]bool)
 	for _, v := range allowedContentTypes {
 		allowedTypes[v] = true
 	}
 
-	return &KafkaMessageMapper{
-		ContentOriginAllowlistRegex: contentOriginAllowlist,
-		AllowedContentTypes:         allowedTypes,
-		log:                         log,
+	return &MessageMapper{
+		originAllowlistRegex: originAllowlist,
+		allowedContentTypes:  allowedTypes,
 	}
 }
 
@@ -45,9 +38,9 @@ type event struct {
 	Payload    interface{}
 }
 
-func (e *event) mapNotification(tid string) (*Notification, error) {
-	UUID := UUIDRegexp.FindString(e.ContentURI)
-	if UUID == "" {
+func (e *event) toNotification(tid string) (*Notification, error) {
+	uuid := uuidRegexp.FindString(e.ContentURI)
+	if uuid == "" {
 		return nil, fmt.Errorf("contentURI does not contain a UUID")
 	}
 
@@ -62,8 +55,8 @@ func (e *event) mapNotification(tid string) (*Notification, error) {
 	}
 
 	var canBeDistributed *string
-	canBeDistributedValue, found := payload["canBeDistributed"]
-	if found {
+	canBeDistributedValue, ok := payload["canBeDistributed"]
+	if ok {
 		canBeDistributed = new(string)
 		*canBeDistributed = canBeDistributedValue.(string)
 	}
@@ -72,7 +65,7 @@ func (e *event) mapNotification(tid string) (*Notification, error) {
 
 	return &Notification{
 		Stub: content.Stub{
-			UUID:             UUID,
+			UUID:             uuid,
 			Date:             content.GetDateOrDefault(payload),
 			CanBeDistributed: canBeDistributed,
 			ContentType:      contentType,
@@ -83,44 +76,42 @@ func (e *event) mapNotification(tid string) (*Notification, error) {
 	}, nil
 }
 
-func (h *KafkaMessageMapper) MapNotification(msg kafka.FTMessage) (*Notification, error) {
+type filterError struct {
+	reason string
+}
+
+func (e *filterError) Error() string {
+	return e.reason
+}
+
+func (m *MessageMapper) mapNotification(msg kafka.FTMessage) (*Notification, error) {
 	tid := msg.Headers["X-Request-Id"]
-	log := h.log.WithTransactionID(tid)
 
 	var pubEvent event
-	err := json.Unmarshal([]byte(msg.Body), &pubEvent)
-	if err != nil {
-		log.WithField("msg", msg.Body).WithError(err).Warn("Skipping event.")
-		return nil, err
+	if err := json.Unmarshal([]byte(msg.Body), &pubEvent); err != nil {
+		return nil, fmt.Errorf("error unmarshaling event: %w", err)
 	}
 
 	if strings.HasPrefix(tid, "SYNTH") {
-		log.WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: Synthetic transaction ID.")
-		return nil, nil
+		return nil, &filterError{reason: "content is synthetic publication"}
 	}
 
-	if !h.ContentOriginAllowlistRegex.MatchString(pubEvent.ContentURI) {
-		log.WithField("contentUri", pubEvent.ContentURI).Info("Skipping event: It is not in the Content Origin allowlist.")
-		return nil, nil
+	if !m.originAllowlistRegex.MatchString(pubEvent.ContentURI) {
+		return nil, &filterError{reason: fmt.Sprintf("contentURI %s is not exportable", pubEvent.ContentURI)}
 	}
 
-	n, err := pubEvent.mapNotification(tid)
+	notification, err := pubEvent.toNotification(tid)
 	if err != nil {
-		log.WithField("msg", msg.Body).WithError(err).Warn("Skipping event: Cannot build notification for message.")
-		return nil, err
+		return nil, fmt.Errorf("error building notification: %w", err)
 	}
 
-	log = log.WithUUID(n.Stub.UUID)
-
-	if !h.AllowedContentTypes[n.Stub.ContentType] {
-		log.WithField("type", n.Stub.ContentType).Info("Skipping event: Type not exportable.")
-		return nil, nil
+	if !m.allowedContentTypes[notification.Stub.ContentType] {
+		return nil, &filterError{reason: fmt.Sprintf("content type %s is not exportable", notification.Stub.ContentType)}
 	}
 
-	if n.Stub.CanBeDistributed != nil && *n.Stub.CanBeDistributed != canBeDistributedYes {
-		log.Warn("Skipping event: Content cannot be distributed.")
-		return nil, nil
+	if notification.Stub.CanBeDistributed != nil && *notification.Stub.CanBeDistributed != canBeDistributedYes {
+		return nil, &filterError{reason: "content is not distributable"}
 	}
 
-	return n, nil
+	return notification, nil
 }

@@ -213,7 +213,7 @@ func main() {
 		exporter := content.NewExporter(fetcher, uploader)
 		fullExporter := export.NewFullExporter(20, exporter)
 		locker := export.NewLocker()
-		var kafkaListener *queue.KafkaListener
+		var kafkaListener *queue.Listener
 		if *isIncExportEnabled {
 			kafkaListener = prepareIncrementalExport(
 				log,
@@ -227,8 +227,8 @@ func main() {
 				locker,
 				maxGoRoutines,
 			)
-			go kafkaListener.ConsumeMessages()
-			defer kafkaListener.StopConsumingMessages()
+			go kafkaListener.Start()
+			defer kafkaListener.Stop()
 		} else {
 			log.Warn("INCREMENTAL export is not enabled")
 		}
@@ -259,13 +259,11 @@ func main() {
 
 		waitForSignal()
 		log.Info("Gracefully shut down")
-
 	}
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Errorf("App could not start, error=[%s]\n", err)
-		return
+		log.WithError(err).Fatal("App could not start")
 	}
 }
 
@@ -277,7 +275,7 @@ func prepareIncrementalExport(
 	delayForNotification *int,
 	locker *export.Locker,
 	maxGoRoutines *int,
-) *queue.KafkaListener {
+) *queue.Listener {
 	config := kafka.ConsumerConfig{
 		BrokersConnectionString: *consumerAddrs,
 		ConsumerGroup:           *consumerGroupID,
@@ -288,16 +286,13 @@ func prepareIncrementalExport(
 	}
 	messageConsumer := kafka.NewConsumer(config, topics, log)
 
-	contentOriginAllowListRegex, err := regexp.Compile(*contentOriginAllowlist)
-	if err != nil {
-		log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
-	}
+	contentOriginAllowListRegex := regexp.MustCompile(*contentOriginAllowlist)
 
-	kafkaMessageHandler := queue.NewKafkaContentNotificationHandler(exporter, *delayForNotification, log)
-	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowListRegex, allowedContentTypes, log)
-	kafkaListener := queue.NewKafkaListener(messageConsumer, kafkaMessageHandler, kafkaMessageMapper, locker, *maxGoRoutines, log)
+	messageHandler := queue.NewNotificationHandler(exporter, *delayForNotification)
+	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
+	listener := queue.NewListener(messageConsumer, messageHandler, messageMapper, locker, *maxGoRoutines, log)
 
-	return kafkaListener
+	return listener
 }
 
 func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, requestHandler *web.RequestHandler, healthService *healthService) {

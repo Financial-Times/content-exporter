@@ -32,7 +32,7 @@ type healthConfig struct {
 	db                     *mongo.Client
 	enrichedContentFetcher *content.EnrichedContentFetcher
 	s3Uploader             *content.S3Updater
-	queueHandler           *queue.KafkaListener
+	queueHandler           *queue.Listener
 }
 
 type exportStatusManager interface {

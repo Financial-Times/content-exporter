@@ -2,14 +2,11 @@ package content
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"net/http"
 )
 
 const s3WriterPath = "/content/"
-
-var ErrNotFound = errors.New("content not found")
 
 type updater interface {
 	Upload(content []byte, tid, uuid, date string) error
@@ -45,9 +42,6 @@ func (u *S3Updater) Delete(uuid, tid string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
-		if resp.StatusCode == http.StatusNotFound {
-			return ErrNotFound
-		}
 		return fmt.Errorf("deleting content failed with unexpected status code: %d", resp.StatusCode)
 	}
 
