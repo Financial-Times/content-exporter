@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -73,7 +73,7 @@ func enrichedContentURL(baseURL string) string {
 }
 
 func TestEnrichedContentFetcherGetValidContent(t *testing.T) {
-	testUUID := uuid.New()
+	testUUID := uuid.New().String()
 	testData := []byte(testUUID)
 	mockServer := new(mockEnrichedContentServer)
 	mockServer.On("GetRequest", "", "tid_1234", "application/json", "").Return(200, testData)
@@ -91,7 +91,7 @@ func TestEnrichedContentFetcherGetValidContent(t *testing.T) {
 }
 
 func TestEnrichedContentFetcherGetValidContentWithAuthorizationAndXPolicy(t *testing.T) {
-	testUUID := uuid.New()
+	testUUID := uuid.New().String()
 	testData := []byte(testUUID)
 	mockServer := new(mockEnrichedContentServer)
 	auth := "auth-string"
@@ -110,7 +110,7 @@ func TestEnrichedContentFetcherGetValidContentWithAuthorizationAndXPolicy(t *tes
 }
 
 func TestEnrichedContentFetcherGetContentWithAuthError(t *testing.T) {
-	testUUID := uuid.New()
+	testUUID := uuid.New().String()
 	mockServer := new(mockEnrichedContentServer)
 	auth := "auth-string"
 	xPolicies := "xpolicies"

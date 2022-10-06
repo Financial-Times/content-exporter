@@ -14,7 +14,6 @@ import (
 	"github.com/Financial-Times/go-logger/v2"
 	transactionidutils "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/gorilla/mux"
-	"github.com/pborman/uuid"
 )
 
 type exporter interface {
@@ -96,15 +95,7 @@ func (handler *RequestHandler) Export(writer http.ResponseWriter, request *http.
 		return
 	}
 
-	jobID := uuid.New()
-	job := &export.Job{
-		ID:                       jobID,
-		NrWorker:                 handler.fullExporter.GetWorkerCount(),
-		Status:                   export.STARTING,
-		ContentRetrievalThrottle: handler.contentRetrievalThrottle,
-		FullExport:               isFullExport,
-		Log:                      handler.log,
-	}
+	job := export.NewJob(handler.fullExporter.GetWorkerCount(), handler.contentRetrievalThrottle, isFullExport, handler.log)
 	handler.fullExporter.AddJob(job)
 	response := map[string]string{
 		"ID":     job.ID,
@@ -199,7 +190,7 @@ func (handler *RequestHandler) GetJob(writer http.ResponseWriter, request *http.
 	if err != nil {
 		msg := fmt.Sprintf(`{"message":"%v"}`, err)
 		handler.log.WithError(err).Info("Failed to retrieve job")
-		http.Error(writer, msg, http.StatusNotFound) // TODO: test
+		http.Error(writer, msg, http.StatusNotFound)
 		return
 	}
 

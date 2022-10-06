@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -81,7 +81,7 @@ func s3ContentURL(baseURL string) string {
 }
 
 func TestS3UpdaterUploadContent(t *testing.T) {
-	testUUID := uuid.NewUUID().String()
+	testUUID := uuid.New().String()
 	testData := []byte(testUUID)
 	date := time.Now().UTC().Format("2006-01-02")
 
@@ -97,7 +97,7 @@ func TestS3UpdaterUploadContent(t *testing.T) {
 }
 
 func TestS3UpdaterUploadContentErrorResponse(t *testing.T) {
-	testUUID := uuid.NewUUID().String()
+	testUUID := uuid.New().String()
 	testData := []byte(testUUID)
 	date := time.Now().UTC().Format("2006-01-02")
 
@@ -139,7 +139,7 @@ func TestS3UpdaterUploadContentErrorOnRequestDo(t *testing.T) {
 }
 
 func TestS3UpdaterDeleteContent(t *testing.T) {
-	testUUID := uuid.NewUUID().String()
+	testUUID := uuid.New().String()
 
 	mockServer := new(mockS3WriterServer)
 	mockServer.On("DeleteRequest", testUUID, "tid_1234").Return(204)
@@ -153,7 +153,7 @@ func TestS3UpdaterDeleteContent(t *testing.T) {
 }
 
 func TestS3UpdaterDeleteContentErrorResponse(t *testing.T) {
-	testUUID := uuid.NewUUID().String()
+	testUUID := uuid.New().String()
 
 	mockServer := new(mockS3WriterServer)
 	mockServer.On("DeleteRequest", testUUID, "tid_1234").Return(503)

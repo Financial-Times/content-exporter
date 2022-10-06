@@ -7,6 +7,7 @@ import (
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/go-logger/v2"
+	"github.com/google/uuid"
 )
 
 type Service struct {
@@ -27,17 +28,31 @@ const (
 type Job struct {
 	lock                     *sync.RWMutex
 	wg                       *sync.WaitGroup
-	Log                      *logger.UPPLogger  `json:"-"`
-	NrWorker                 int                `json:"-"`
-	DocIds                   chan *content.Stub `json:"-"`
-	ID                       string             `json:"ID"`
-	Count                    int                `json:"Count,omitempty"`
-	Progress                 int                `json:"Progress,omitempty"`
-	Failed                   []string           `json:"Failed,omitempty"`
-	Status                   State              `json:"Status"`
-	ErrorMessage             string             `json:"ErrorMessage,omitempty"`
-	ContentRetrievalThrottle int                `json:"-"`
-	FullExport               bool               `json:"-"`
+	log                      *logger.UPPLogger
+	nrWorker                 int
+	contentRetrievalThrottle int
+	isFullExport             bool
+
+	DocIds       chan *content.Stub `json:"-"`
+	ID           string             `json:"ID"`
+	Count        int                `json:"Count,omitempty"`
+	Progress     int                `json:"Progress,omitempty"`
+	Failed       []string           `json:"Failed,omitempty"`
+	Status       State              `json:"Status"`
+	ErrorMessage string             `json:"ErrorMessage,omitempty"`
+}
+
+func NewJob(nrWorker int, contentRetrievalThrottle int, isFullExport bool, log *logger.UPPLogger) *Job {
+	return &Job{
+		ID:                       uuid.New().String(),
+		nrWorker:                 nrWorker,
+		contentRetrievalThrottle: contentRetrievalThrottle,
+		isFullExport:             isFullExport,
+		log:                      log,
+		lock:                     &sync.RWMutex{},
+		wg:                       &sync.WaitGroup{},
+		Status:                   STARTING,
+	}
 }
 
 func NewFullExporter(nrOfWorkers int, exporter *content.Exporter) *Service {
@@ -86,7 +101,7 @@ func (fe *Service) IsFullExportRunning() bool {
 	fe.RLock()
 	defer fe.RUnlock()
 	for _, job := range fe.jobs {
-		if job.FullExport && job.Status != FINISHED {
+		if job.isFullExport && job.Status != FINISHED {
 			return true
 		}
 	}
@@ -106,15 +121,15 @@ func (job *Job) Copy() Job {
 }
 
 func (job *Job) RunFullExport(tid string, export func(string, *content.Stub) error) {
-	job.Log.Infof("Job started: %v", job.ID)
+	job.log.Infof("Job started: %v", job.ID)
 	job.Status = RUNNING
-	worker := make(chan struct{}, job.NrWorker)
+	worker := make(chan struct{}, job.nrWorker)
 	for {
 		doc, ok := <-job.DocIds
 		if !ok {
 			job.wg.Wait()
 			job.Status = FINISHED
-			job.Log.Infof("Finished job %v with %v failure(s), progress: %v", job.ID, len(job.Failed), job.Progress)
+			job.log.Infof("Finished job %v with %v failure(s), progress: %v", job.ID, len(job.Failed), job.Progress)
 			close(worker)
 			return
 		}
@@ -125,9 +140,9 @@ func (job *Job) RunFullExport(tid string, export func(string, *content.Stub) err
 		job.wg.Add(1)
 		go func() {
 			defer job.wg.Done()
-			time.Sleep(time.Duration(job.ContentRetrievalThrottle) * time.Millisecond)
+			time.Sleep(time.Duration(job.contentRetrievalThrottle) * time.Millisecond)
 			if err := export(tid, doc); err != nil {
-				job.Log.
+				job.log.
 					WithTransactionID(tid).
 					WithUUID(doc.UUID).
 					WithError(err).
