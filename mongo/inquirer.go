@@ -33,58 +33,58 @@ func NewInquirer(finder contentFinder, log *logger.UPPLogger) *Inquirer {
 	}
 }
 
-func (m *Inquirer) Inquire(ctx context.Context, candidates []string) (chan *content.Stub, int, error) {
-	cur, length, err := m.finder.findContent(ctx, candidates)
+func (i *Inquirer) Inquire(ctx context.Context, candidates []string) (chan *content.Stub, int, error) {
+	cur, length, err := i.finder.findContent(ctx, candidates)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	docs := make(chan *content.Stub, 8)
-
-	go func() {
-		defer func() {
-			close(docs)
-			_ = cur.Close(context.Background())
-		}()
-
-		counter := 0
-
-		for cur.Next(ctx) {
-			var result bson.M
-			if err = cur.Decode(&result); err != nil {
-				m.log.WithError(err).Warn("Failed to decode document")
-				continue
-			}
-
-			counter++
-
-			var stub *content.Stub
-			stub, err = mapStub(result)
-			if err != nil {
-				m.log.WithError(err).Warn("Failed to map document")
-				continue
-			}
-			docs <- stub
-		}
-		if err = cur.Err(); err != nil {
-			m.log.WithError(err).Error("Error occurred while iterating over collection")
-		}
-
-		m.log.Infof("Processed %v docs", counter)
-	}()
+	go i.processDocuments(ctx, cur, docs)
 
 	return docs, length, nil
 }
 
-func mapStub(result map[string]interface{}) (*content.Stub, error) {
-	docUUID, ok := result["uuid"]
+func (i *Inquirer) processDocuments(ctx context.Context, cur cursor, docs chan *content.Stub) {
+	defer func() {
+		close(docs)
+		_ = cur.Close(context.Background())
+	}()
+
+	counter := 0
+
+	for cur.Next(ctx) {
+		var doc bson.M
+		if err := cur.Decode(&doc); err != nil {
+			i.log.WithError(err).Warn("Failed to decode document")
+			continue
+		}
+
+		counter++
+
+		stub, err := mapStub(doc)
+		if err != nil {
+			i.log.WithError(err).Warn("Failed to map document")
+			continue
+		}
+		docs <- stub
+	}
+	if err := cur.Err(); err != nil {
+		i.log.WithError(err).Error("Error occurred while iterating over collection")
+	}
+
+	i.log.Infof("Processed %v docs", counter)
+}
+
+func mapStub(doc map[string]interface{}) (*content.Stub, error) {
+	docUUID, ok := doc["uuid"]
 	if !ok {
-		return nil, fmt.Errorf("uuid not found in document: %v", result)
+		return nil, fmt.Errorf("uuid not found in document: %v", doc)
 	}
 
 	return &content.Stub{
 		UUID:             docUUID.(string),
-		Date:             content.GetDateOrDefault(result),
+		Date:             content.GetDateOrDefault(doc),
 		CanBeDistributed: nil,
 	}, nil
 }
