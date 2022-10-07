@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type Service struct {
+type FullExporter struct {
 	sync.RWMutex
 	jobs                  map[string]*Job
 	nrOfConcurrentWorkers int
@@ -25,6 +25,8 @@ const (
 	FINISHED State = "Finished"
 )
 
+var ErrJobNotFound = fmt.Errorf("job not found")
+
 type Job struct {
 	lock                     *sync.RWMutex
 	wg                       *sync.WaitGroup
@@ -33,13 +35,12 @@ type Job struct {
 	contentRetrievalThrottle int
 	isFullExport             bool
 
-	DocIds       chan *content.Stub `json:"-"`
-	ID           string             `json:"ID"`
-	Count        int                `json:"Count,omitempty"`
-	Progress     int                `json:"Progress,omitempty"`
-	Failed       []string           `json:"Failed,omitempty"`
-	Status       State              `json:"Status"`
-	ErrorMessage string             `json:"ErrorMessage,omitempty"`
+	ID           string   `json:"ID"`
+	Count        int      `json:"Count,omitempty"`
+	Progress     int      `json:"Progress,omitempty"`
+	Failed       []string `json:"Failed,omitempty"`
+	Status       State    `json:"Status"`
+	ErrorMessage string   `json:"ErrorMessage,omitempty"`
 }
 
 func NewJob(nrWorker int, contentRetrievalThrottle int, isFullExport bool, log *logger.UPPLogger) *Job {
@@ -55,15 +56,15 @@ func NewJob(nrWorker int, contentRetrievalThrottle int, isFullExport bool, log *
 	}
 }
 
-func NewFullExporter(nrOfWorkers int, exporter *content.Exporter) *Service {
-	return &Service{
+func NewFullExporter(nrOfWorkers int, exporter *content.Exporter) *FullExporter {
+	return &FullExporter{
 		jobs:                  make(map[string]*Job),
 		nrOfConcurrentWorkers: nrOfWorkers,
 		Exporter:              exporter,
 	}
 }
 
-func (fe *Service) GetRunningJobs() []Job {
+func (fe *FullExporter) GetRunningJobs() []Job {
 	fe.RLock()
 	defer fe.RUnlock()
 	var jobs []Job
@@ -75,17 +76,17 @@ func (fe *Service) GetRunningJobs() []Job {
 	return jobs
 }
 
-func (fe *Service) GetJob(jobID string) (Job, error) {
+func (fe *FullExporter) GetJob(jobID string) (Job, error) {
 	fe.RLock()
 	defer fe.RUnlock()
 	job, ok := fe.jobs[jobID]
 	if !ok {
-		return Job{}, fmt.Errorf("job %v not found", jobID)
+		return Job{}, ErrJobNotFound
 	}
 	return job.Copy(), nil
 }
 
-func (fe *Service) AddJob(job *Job) {
+func (fe *FullExporter) AddJob(job *Job) {
 	if job != nil {
 		fe.Lock()
 		fe.jobs[job.ID] = job
@@ -93,11 +94,11 @@ func (fe *Service) AddJob(job *Job) {
 	}
 }
 
-func (fe *Service) GetWorkerCount() int {
+func (fe *FullExporter) GetWorkerCount() int {
 	return fe.nrOfConcurrentWorkers
 }
 
-func (fe *Service) IsFullExportRunning() bool {
+func (fe *FullExporter) IsFullExportRunning() bool {
 	fe.RLock()
 	defer fe.RUnlock()
 	for _, job := range fe.jobs {
@@ -120,21 +121,21 @@ func (job *Job) Copy() Job {
 	}
 }
 
-func (job *Job) RunFullExport(tid string, export func(string, *content.Stub) error) {
+func (job *Job) RunExport(tid string, docs chan *content.Stub, export func(string, *content.Stub) error) {
 	job.log.Infof("Job started: %v", job.ID)
 	job.Status = RUNNING
-	worker := make(chan struct{}, job.nrWorker)
+	workers := make(chan struct{}, job.nrWorker)
 	for {
-		doc, ok := <-job.DocIds
+		doc, ok := <-docs
 		if !ok {
 			job.wg.Wait()
 			job.Status = FINISHED
 			job.log.Infof("Finished job %v with %v failure(s), progress: %v", job.ID, len(job.Failed), job.Progress)
-			close(worker)
+			close(workers)
 			return
 		}
 
-		worker <- struct{}{} // Will block until worker is available to span up new goroutines
+		workers <- struct{}{} // Will block until worker is available to span up new goroutines
 
 		job.Progress++
 		job.wg.Add(1)
@@ -152,7 +153,7 @@ func (job *Job) RunFullExport(tid string, export func(string, *content.Stub) err
 				job.Failed = append(job.Failed, doc.UUID)
 				job.lock.Unlock()
 			}
-			<-worker
+			<-workers
 		}()
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/go-logger/v2"
 	"github.com/gorilla/mux"
+	"github.com/stretchr/testify/assert"
 )
 
 type exporterMock struct {
@@ -87,7 +88,7 @@ func TestRequestHandler_Export(t *testing.T) {
 				req, _ := http.NewRequest("POST", "/export", body)
 				return req
 			},
-			expectedBody:   "{\"error\":\"Pass a list of ids or trigger a full export flag\"}\n",
+			expectedBody:   "{\"error\":\"Pass a list of ids or trigger a full export flag\"}",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -106,7 +107,7 @@ func TestRequestHandler_Export(t *testing.T) {
 				req, _ := http.NewRequest("POST", "/export?fullExport=false", body)
 				return req
 			},
-			expectedBody:   "{\"error\":\"Pass a list of ids or trigger a full export flag\"}\n",
+			expectedBody:   "{\"error\":\"Pass a list of ids or trigger a full export flag\"}",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -125,7 +126,7 @@ func TestRequestHandler_Export(t *testing.T) {
 				req, _ := http.NewRequest("POST", "/export?fullExport=true", body)
 				return req
 			},
-			expectedBody:   "{\"error\":\"Pass either a list of ids or the full export flag, not both\"}\n",
+			expectedBody:   "{\"error\":\"Pass either a list of ids or the full export flag, not both\"}",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -197,16 +198,10 @@ func TestRequestHandler_Export(t *testing.T) {
 			r.HandleFunc("/export", h.Export).Methods("POST")
 			r.ServeHTTP(rr, req)
 
-			if status := rr.Code; status != test.expectedStatus {
-				t.Errorf("handler returned wrong status code: got %v want %v",
-					status, test.expectedStatus)
-			}
+			assert.Equal(t, test.expectedStatus, rr.Code)
 
 			if test.expectedBody != "" {
-				if rr.Body.String() != test.expectedBody {
-					t.Errorf("handler returned unexpected body: got %v want %v",
-						rr.Body.String(), test.expectedBody)
-				}
+				assert.Equal(t, test.expectedBody, rr.Body.String())
 			}
 		})
 	}
