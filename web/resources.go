@@ -188,7 +188,7 @@ func getCandidateUUIDs(request *http.Request) ([]string, error) {
 		return nil, fmt.Errorf("'ids' field is not a string")
 	}
 
-	return strings.Split(idsString, " "), nil
+	return strings.Split(idsString, ","), nil
 }
 
 func (h *RequestHandler) GetJob(w http.ResponseWriter, r *http.Request) {
