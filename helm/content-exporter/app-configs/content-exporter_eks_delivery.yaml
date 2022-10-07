@@ -2,6 +2,10 @@
 service:
   name: content-exporter
 env:
+  mongo:
+    database: "upp-store"
+    collection: "content"
+    timeout: 60
   kafka:
     groupId: "content-exporter"
     topic: "PostPublicationEvents"

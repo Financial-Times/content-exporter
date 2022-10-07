@@ -52,6 +52,12 @@ spec:
             configMapKeyRef:
               name: global-config
               key: mongo.addresses
+        - name: MONGO_TIMEOUT
+          value: "{{ .Values.env.mongo.timeout }}"
+        - name: MONGO_DATABASE
+          value: "{{ .Values.env.mongo.database }}"
+        - name: MONGO_COLLECTION
+          value: "{{ .Values.env.mongo.collection }}"
         - name: KAFKA_ADDRS
           valueFrom:
             configMapKeyRef:

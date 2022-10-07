@@ -64,20 +64,20 @@ func main() {
 	mongoTimeout := app.Int(cli.IntOpt{
 		Name:   "mongoTimeout",
 		Desc:   "Mongo session connection timeout in seconds. (e.g. 60)",
-		EnvVar: "MONGO_TIMEOUT", // TODO: define in app config
+		EnvVar: "MONGO_TIMEOUT",
 		Value:  60,
 	})
 	mongoDatabase := app.String(cli.StringOpt{
 		Name:   "mongoConnection",
 		Value:  "upp-store",
 		Desc:   "Mongo database to read from",
-		EnvVar: "MONGO_DATABASE", // TODO: define in app config
+		EnvVar: "MONGO_DATABASE",
 	})
 	mongoCollection := app.String(cli.StringOpt{
 		Name:   "mongoCollection",
 		Value:  "content",
 		Desc:   "Mongo collection to read from",
-		EnvVar: "MONGO_COLLECTION", // TODO: define in app config
+		EnvVar: "MONGO_COLLECTION",
 	})
 	enrichedContentAPIURL := app.String(cli.StringOpt{
 		Name:   "enrichedContentAPIURL",
