@@ -60,28 +60,6 @@ func (h *RequestHandler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.isIncExportEnabled {
-		select {
-		case h.locker.Locked <- true:
-			h.log.Info("Lock initiated")
-		case <-time.After(time.Second * 3):
-			msg := "Lock initiation timed out"
-			h.log.Infof(msg)
-			h.sendErrorResponse(w, http.StatusServiceUnavailable, msg)
-			return
-		}
-
-		select {
-		case <-h.locker.Acked:
-			h.log.Info("Locker acquired")
-		case <-time.After(time.Second * 20):
-			msg := "Stopping kafka consumption timed out"
-			h.log.Infof(msg)
-			h.sendErrorResponse(w, http.StatusServiceUnavailable, msg)
-			return
-		}
-	}
-
 	isFullExport := r.URL.Query().Get("fullExport") == "true"
 
 	candidates, err := getCandidateUUIDs(r)
@@ -95,6 +73,28 @@ func (h *RequestHandler) Export(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("Can't trigger a full export with ids")
 		h.sendErrorResponse(w, http.StatusBadRequest, "Pass either a list of ids or the full export flag, not both")
 		return
+	}
+
+	if h.isIncExportEnabled {
+		select {
+		case h.locker.Locked <- true:
+			h.log.Info("Lock initiated")
+		case <-time.After(time.Second * 3):
+			msg := "Lock initiation timed out"
+			h.log.Info(msg)
+			h.sendErrorResponse(w, http.StatusServiceUnavailable, msg)
+			return
+		}
+
+		select {
+		case <-h.locker.Acked:
+			h.log.Info("Locker acquired")
+		case <-time.After(time.Second * 20):
+			msg := "Stopping kafka consumption timed out"
+			h.log.Info(msg)
+			h.sendErrorResponse(w, http.StatusServiceUnavailable, msg)
+			return
+		}
 	}
 
 	job := export.NewJob(h.fullExporter.GetWorkerCount(), h.contentRetrievalThrottle, isFullExport, h.log)
