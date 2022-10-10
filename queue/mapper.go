@@ -80,8 +80,26 @@ type filterError struct {
 	reason string
 }
 
+func newFilterError(reason string) error {
+	return &filterError{
+		reason: reason,
+	}
+}
+
+func newFilterTypeError(contentType string) error {
+	return &filterError{
+		reason: fmt.Sprintf("type %s not allowed", contentType),
+	}
+}
+
+func newFilterURIError(uri string) error {
+	return &filterError{
+		reason: fmt.Sprintf("uri %s not allowed", uri),
+	}
+}
+
 func (e *filterError) Error() string {
-	return e.reason
+	return fmt.Sprintf("content is not exportable: %s", e.reason)
 }
 
 func (m *MessageMapper) mapNotification(msg kafka.FTMessage) (*Notification, error) {
@@ -93,11 +111,11 @@ func (m *MessageMapper) mapNotification(msg kafka.FTMessage) (*Notification, err
 	}
 
 	if strings.HasPrefix(tid, "SYNTH") {
-		return nil, &filterError{reason: "content is synthetic publication"}
+		return nil, newFilterError("synthetic publication")
 	}
 
 	if !m.originAllowlistRegex.MatchString(pubEvent.ContentURI) {
-		return nil, &filterError{reason: fmt.Sprintf("contentURI %s is not exportable", pubEvent.ContentURI)}
+		return nil, newFilterURIError(pubEvent.ContentURI)
 	}
 
 	notification, err := pubEvent.toNotification(tid)
@@ -106,11 +124,11 @@ func (m *MessageMapper) mapNotification(msg kafka.FTMessage) (*Notification, err
 	}
 
 	if !m.allowedContentTypes[notification.Stub.ContentType] {
-		return nil, &filterError{reason: fmt.Sprintf("content type %s is not exportable", notification.Stub.ContentType)}
+		return nil, newFilterTypeError(notification.Stub.ContentType)
 	}
 
 	if notification.Stub.CanBeDistributed != nil && *notification.Stub.CanBeDistributed != canBeDistributedYes {
-		return nil, &filterError{reason: "content is not distributable"}
+		return nil, newFilterError("cannot be distributed")
 	}
 
 	return notification, nil
