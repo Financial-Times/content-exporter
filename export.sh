@@ -14,31 +14,32 @@ if [ -z "${AUTH}" ]; then
 fi
 postBody=""
 if [ -n "${UUID_LIST}" ]; then
+  UUID_LIST=$(echo "$UUID_LIST" | tr -d '[:space:]')
   echo "Export will be made for the following uuids: ${UUID_LIST}"
   postBody="{\"ids\":\"${UUID_LIST}\"}"
 else
   echo "FULL export initiated."
 fi
-jobResult=`curl -qSfs "${EXPORTER_URL}/export" -H "Authorization: ${AUTH}" -XPOST -d "${postBody}" 2>/dev/null`
+jobResult=$(curl -qSfs "${EXPORTER_URL}/export" -H "Authorization: ${AUTH}" -XPOST -d "${postBody}" 2>/dev/null)
 if [ "$?" -ne 0 ]; then
   echo ">>Exporter service cannot be called successfully. Maybe service is down or the authentication is incorrect or there is already a running export job?"
   exit 1
 else
-  jobID=`echo "${jobResult}" | jq '.ID' | cut -d'"' -f2 2>/dev/null`
+  jobID=$(echo "${jobResult}" | jq '.ID' | cut -d'"' -f2 2>/dev/null)
   echo "Export triggered. Job id: ${jobID}. Checking continuously the status to be in 'Finished'..."
   sleep 3
   status="Running"
   while [ ${status} != "Finished" ]; do
-  job=`curl -qSfs "${EXPORTER_URL}/jobs/${jobID}" -H "Authorization: ${AUTH}" 2>/dev/null`
+  job=$(curl -qSfs "${EXPORTER_URL}/jobs/${jobID}" -H "Authorization: ${AUTH}" 2>/dev/null)
 
   if [ "$?" -ne 0 ]; then
 	echo ">>Failed to retrieve job"
 	exit 1
   else
-	 status=`echo ${job} | jq '.Status' | cut -d'"' -f2 2>/dev/null`
+	 status=$(echo "${job}" | jq '.Status' | cut -d'"' -f2 2>/dev/null)
   fi
 
-  echo ${job}
+  echo "${job}"
   sleep 3
   done
   echo "Export finished. Check logs if there are failures"
