@@ -52,8 +52,6 @@ func NewRequestHandler(fullExporter exporter, inquirer inquirer, locker *export.
 }
 
 func (h *RequestHandler) Export(w http.ResponseWriter, r *http.Request) {
-	tid := transactionidutils.GetTransactionIDFromRequest(r)
-
 	jobs := h.fullExporter.GetRunningJobs()
 	if len(jobs) > 0 {
 		h.sendErrorResponse(w, http.StatusBadRequest, "There are already running export jobs. Please wait them to finish")
@@ -97,6 +95,8 @@ func (h *RequestHandler) Export(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	tid := transactionidutils.GetTransactionIDFromRequest(r)
+
 	job := export.NewJob(h.fullExporter.GetWorkerCount(), h.contentRetrievalThrottle, isFullExport, h.log)
 	h.fullExporter.AddJob(job)
 	response := map[string]string{
@@ -124,7 +124,9 @@ func (h *RequestHandler) startExport(job *export.Job, isFullExport bool, candida
 			h.locker.Locked <- false
 		}()
 	}
-	h.log.Info("Calling mongo")
+
+	log := h.log.WithTransactionID(tid)
+	log.Info("Calling mongo")
 
 	ctx := context.Background()
 	if !isFullExport {
@@ -136,12 +138,12 @@ func (h *RequestHandler) startExport(job *export.Job, isFullExport bool, candida
 	docs, count, err := h.inquirer.Inquire(ctx, candidates)
 	if err != nil {
 		msg := "Failed to read content from mongo"
-		h.log.WithError(err).Warn(msg)
+		log.WithError(err).Warn(msg)
 		job.ErrorMessage = msg
 		job.Status = export.FINISHED
 		return
 	}
-	h.log.Infof("Nr of UUIDs found: %v", count)
+	log.Infof("Number of UUIDs found: %v", count)
 	job.Count = count
 
 	job.RunExport(tid, docs, h.fullExporter.Export)
