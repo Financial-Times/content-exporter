@@ -54,13 +54,13 @@ func (i *Inquirer) processDocuments(ctx context.Context, cur cursor, docs chan *
 	counter := 0
 
 	for cur.Next(ctx) {
+		counter++
+
 		var doc bson.M
 		if err := cur.Decode(&doc); err != nil {
 			i.log.WithError(err).Warn("Failed to decode document")
 			continue
 		}
-
-		counter++
 
 		stub, err := mapStub(doc)
 		if err != nil {
