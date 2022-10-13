@@ -19,7 +19,7 @@ type Listener struct {
 	pending             map[string]*Notification
 	notificationHandler *NotificationHandler
 	messageMapper       *MessageMapper
-	worker              chan struct{}
+	workers             chan struct{}
 	log                 *logger.UPPLogger
 }
 
@@ -39,7 +39,7 @@ func NewListener(
 		terminator:          export.NewTerminator(),
 		notificationHandler: notificationHandler,
 		messageMapper:       messageMapper,
-		worker:              make(chan struct{}, maxGoRoutines),
+		workers:             make(chan struct{}, maxGoRoutines),
 		log:                 log,
 	}
 }
@@ -171,10 +171,10 @@ func (l *Listener) handleNotifications() {
 			log.Info("PAUSE finished. Resuming handling notification")
 		}
 
-		l.worker <- struct{}{}
+		l.workers <- struct{}{}
 		go func(notification *Notification, log *logger.LogEntry) {
 			defer func() {
-				<-l.worker
+				<-l.workers
 			}()
 
 			log = log.
@@ -211,12 +211,12 @@ func (l *Listener) CheckHealth() (string, error) {
 	if err := l.messageConsumer.ConnectivityCheck(); err != nil {
 		return "", err
 	}
-	return "Kafka is good to go.", nil
+	return "Connectivity to Kafka is OK", nil
 }
 
 func (l *Listener) MonitorCheck() (string, error) {
 	if err := l.messageConsumer.MonitorCheck(); err != nil {
 		return "", err
 	}
-	return "Kafka is good to go.", nil
+	return "Kafka consumer status is OK", nil
 }

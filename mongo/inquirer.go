@@ -17,7 +17,6 @@ type cursor interface {
 	Next(ctx context.Context) bool
 	Decode(val interface{}) error
 	Err() error
-
 	Close(ctx context.Context) error
 }
 
@@ -45,19 +44,19 @@ func (i *Inquirer) Inquire(ctx context.Context, candidates []string) (chan *cont
 	return docs, length, nil
 }
 
-func (i *Inquirer) processDocuments(ctx context.Context, cur cursor, docs chan *content.Stub) {
+func (i *Inquirer) processDocuments(ctx context.Context, c cursor, docs chan *content.Stub) {
 	defer func() {
 		close(docs)
-		_ = cur.Close(context.Background())
+		_ = c.Close(context.Background())
 	}()
 
 	counter := 0
 
-	for cur.Next(ctx) {
+	for c.Next(ctx) {
 		counter++
 
 		var doc bson.M
-		if err := cur.Decode(&doc); err != nil {
+		if err := c.Decode(&doc); err != nil {
 			i.log.WithError(err).Warn("Failed to decode document")
 			continue
 		}
@@ -69,7 +68,7 @@ func (i *Inquirer) processDocuments(ctx context.Context, cur cursor, docs chan *
 		}
 		docs <- stub
 	}
-	if err := cur.Err(); err != nil {
+	if err := c.Err(); err != nil {
 		i.log.WithError(err).Error("Error occurred while iterating over collection")
 	}
 
