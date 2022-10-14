@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 
 	health "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/service-status-go/gtg"
@@ -38,7 +39,7 @@ func newHealthService(dbChecker, readChecker, writeChecker healthChecker, queueC
 	healthChecks := []health.Check{mongoCheck, readerCheck, writerCheck}
 	gtgChecks := []health.Check{mongoCheck, readerCheck, writerCheck}
 
-	if queueChecker != nil {
+	if !reflect.ValueOf(queueChecker).IsNil() {
 		kafkaConnectivityCheck := newKafkaConnectivityCheck(queueChecker)
 		kafkaMonitorCheck := newKafkaMonitorCheck(queueChecker, statusManager)
 
