@@ -12,15 +12,17 @@ if [ -z "${AUTH}" ]; then
   echo ">>Authentication is empty but is mandatory in the form of \"Basic xxx\""
   exit 1
 fi
-postBody=""
+postBody="{}"
+fullExport="false"
 if [ -n "${UUID_LIST}" ]; then
   UUID_LIST=$(echo "$UUID_LIST" | tr -d '[:space:]')
   echo "Export will be made for the following uuids: ${UUID_LIST}"
   postBody="{\"ids\":\"${UUID_LIST}\"}"
 else
+  fullExport="true"
   echo "FULL export initiated."
 fi
-jobResult=$(curl -qSfs "${EXPORTER_URL}/export" -H "Authorization: ${AUTH}" -XPOST -d "${postBody}" 2>/dev/null)
+jobResult=$(curl -qSfs "${EXPORTER_URL}/export?fullExport=${fullExport}" -H "Authorization: ${AUTH}" -XPOST -d "${postBody}" 2>/dev/null)
 if [ "$?" -ne 0 ]; then
   echo ">>Exporter service cannot be called successfully. Maybe service is down or the authentication is incorrect or there is already a running export job?"
   exit 1
