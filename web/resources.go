@@ -17,7 +17,10 @@ import (
 	"github.com/gorilla/mux"
 )
 
-const targetedExportTimeout = 30 * time.Second
+const (
+	targetedExportTimeout = 30 * time.Second
+	fullExportTimeout     = 120 * time.Second
+)
 
 type exporter interface {
 	GetJob(jobID string) (export.Job, error)
@@ -128,12 +131,13 @@ func (h *RequestHandler) startExport(job *export.Job, isFullExport bool, candida
 	log := h.log.WithTransactionID(tid)
 	log.Info("Calling mongo")
 
-	ctx := context.Background()
-	if !isFullExport {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, targetedExportTimeout)
-		defer cancel()
+	timeout := targetedExportTimeout
+	if isFullExport {
+		timeout = fullExportTimeout
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	docs, count, err := h.inquirer.Inquire(ctx, candidates)
 	if err != nil {

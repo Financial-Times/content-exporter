@@ -185,7 +185,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		mongoClient, err := mongo.NewClient(ctx, *mongoAddress, *mongoDatabase, *mongoCollection, timeout, log)
+		mongoClient, err := mongo.NewClient(ctx, *mongoAddress, *mongoDatabase, *mongoCollection, log)
 		if err != nil {
 			log.WithError(err).Fatal("Error establishing mongo connection")
 		}

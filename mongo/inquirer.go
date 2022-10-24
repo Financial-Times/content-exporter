@@ -39,7 +39,7 @@ func (i *Inquirer) Inquire(ctx context.Context, candidates []string) (chan *cont
 	}
 
 	docs := make(chan *content.Stub, 8)
-	go i.processDocuments(ctx, cur, docs)
+	go i.processDocuments(context.Background(), cur, docs)
 
 	return docs, length, nil
 }
@@ -47,7 +47,7 @@ func (i *Inquirer) Inquire(ctx context.Context, candidates []string) (chan *cont
 func (i *Inquirer) processDocuments(ctx context.Context, c cursor, docs chan *content.Stub) {
 	defer func() {
 		close(docs)
-		_ = c.Close(context.Background())
+		_ = c.Close(ctx)
 	}()
 
 	counter := 0

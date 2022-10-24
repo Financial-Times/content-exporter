@@ -31,7 +31,7 @@ func setupConnection(t *testing.T) (*Client, func()) {
 
 	log := logger.NewUPPLogger("test", "PANIC")
 
-	client, err := NewClient(ctx, mongoURL, database, collection, timeout, log)
+	client, err := NewClient(ctx, mongoURL, database, collection, log)
 	require.NoError(t, err)
 
 	return client, func() {

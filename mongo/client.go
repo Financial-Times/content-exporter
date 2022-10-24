@@ -20,11 +20,9 @@ type Client struct {
 	log        *logger.UPPLogger
 }
 
-func NewClient(ctx context.Context, uri, database, collection string, timeout time.Duration, log *logger.UPPLogger) (*Client, error) {
+func NewClient(ctx context.Context, uri, database, collection string, log *logger.UPPLogger) (*Client, error) {
 	uri = fmt.Sprintf("mongodb://%s", uri)
-	opts := options.Client().
-		ApplyURI(uri).
-		SetSocketTimeout(timeout)
+	opts := options.Client().ApplyURI(uri)
 
 	client, err := mongo.Connect(ctx, opts)
 	if err != nil {
