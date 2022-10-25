@@ -13,46 +13,45 @@ type Stub struct {
 }
 
 type Exporter struct {
-	Fetcher Fetcher
-	Updater Updater
+	fetcher fetcher
+	updater updater
 }
 
-func NewExporter(fetcher Fetcher, updater Updater) *Exporter {
+func NewExporter(fetcher fetcher, updater updater) *Exporter {
 	return &Exporter{
-		Fetcher: fetcher,
-		Updater: updater,
+		fetcher: fetcher,
+		updater: updater,
 	}
 }
 
-func (e *Exporter) HandleContent(tid string, doc Stub) error {
-	payload, err := e.Fetcher.GetContent(doc.UUID, tid)
+func (e *Exporter) Export(tid string, doc *Stub) error {
+	payload, err := e.fetcher.GetContent(doc.UUID, tid)
 	if err != nil {
-		return fmt.Errorf("error getting content for %v: %v", doc.UUID, err)
+		return fmt.Errorf("getting content: %w", err)
 	}
 
-	err = e.Updater.Upload(payload, tid, doc.UUID, doc.Date)
+	err = e.updater.Upload(payload, tid, doc.UUID, doc.Date)
 	if err != nil {
-		return fmt.Errorf("error uploading content for %v: %v", doc.UUID, err)
+		return fmt.Errorf("uploading content: %w", err)
 	}
 	return nil
 }
 
-func GetDateOrDefault(payload map[string]interface{}) (date string) {
-	docFirstPublishedDate, _ := payload["firstPublishedDate"]
-	d, ok := docFirstPublishedDate.(string)
-	if ok {
-		date = strings.Split(d, "T")[0]
+func (e *Exporter) Delete(uuid, tid string) error {
+	return e.updater.Delete(uuid, tid)
+}
+
+func GetDateOrDefault(payload map[string]interface{}) string {
+	if firstPublishedDate, ok := payload["firstPublishedDate"].(string); ok {
+		if date := strings.Split(firstPublishedDate, "T")[0]; date != "" {
+			return date
+		}
 	}
-	if date != "" {
-		return
-	}
-	docPublishedDate, _ := payload["publishedDate"]
-	d, ok = docPublishedDate.(string)
-	if ok {
-		date = strings.Split(d, "T")[0]
-	}
-	if date != "" {
-		return
+
+	if publishedDate, ok := payload["publishedDate"].(string); ok {
+		if date := strings.Split(publishedDate, "T")[0]; date != "" {
+			return date
+		}
 	}
 
 	return DefaultDate

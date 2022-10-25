@@ -1,63 +1,19 @@
-package db
+package mongo
 
 import (
 	"context"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/mgo.v2/bson"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
-func TestCreateDB(t *testing.T) {
-	mongo := NewMongoDatabase("test-url", 30000)
-	assert.Equal(t, "test-url", mongo.Urls)
-	assert.Equal(t, 30000, mongo.Timeout)
-	assert.NotNil(t, mongo.lock)
-}
-
-func TestPing(t *testing.T) {
-	mongo := startMongo(t)
-	defer mongo.Close()
-
-	tx, err := mongo.Open()
-	defer tx.Close()
-	assert.NoError(t, err)
-
-	err = tx.Ping(context.Background())
-	assert.NoError(t, err)
-}
-
-func TestDBCloses(t *testing.T) {
-	mongo := startMongo(t)
-	tx, err := mongo.Open()
-	assert.NoError(t, err)
-
-	tx.Close()
-	mongo.Close()
-	assert.Panics(t, func() {
-		err := mongo.(*MongoDB).session.Ping()
-		if err != nil {
-			return
-		}
-	})
-}
-
-func TestDBCheckHealth(t *testing.T) {
-	mongo := startMongo(t)
-	defer mongo.Close()
-	tx, err := mongo.Open()
-	defer tx.Close()
-	assert.NoError(t, err)
-
-	output, err := mongo.(*MongoDB).CheckHealth()
-	assert.NoError(t, err)
-	assert.Equal(t, "OK", output)
-}
-
-func startMongo(t *testing.T) Service {
+func setupConnection(t *testing.T) (*Client, func()) {
 	if testing.Short() {
 		t.Skip("Mongo integration for long tests only.")
 	}
@@ -67,23 +23,64 @@ func startMongo(t *testing.T) Service {
 		t.Fatal("Please set the environment variable MONGO_TEST_URL to run mongo integration tests (e.g. MONGO_TEST_URL=localhost:27017). Alternatively, run `go test -short` to skip them.")
 	}
 
-	return NewMongoDatabase(mongoURL, 30000)
+	database := "upp-store"
+	collection := "testing"
+	timeout := 10 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	log := logger.NewUPPLogger("test", "PANIC")
+
+	client, err := NewClient(ctx, mongoURL, database, collection, log)
+	require.NoError(t, err)
+
+	return client, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		assert.NoError(t, client.Close(ctx))
+	}
 }
 
-func insertTestContent(t *testing.T, mongo *MongoDB, testContent map[string]interface{}) {
-	session := mongo.session.Copy()
-	defer session.Close()
+func TestMongoClient_Ping(t *testing.T) {
+	client, teardown := setupConnection(t)
+	defer teardown()
 
-	err := session.DB("upp-store").C("testing").Insert(testContent)
+	assert.NoError(t, client.client.Ping(context.Background(), nil))
+}
+
+func TestMongoClient_PingAfterShutdown(t *testing.T) {
+	client, teardown := setupConnection(t)
+	teardown()
+
+	assert.Error(t, client.client.Ping(context.Background(), nil))
+}
+
+func TestClient_CheckHealth(t *testing.T) {
+	client, teardown := setupConnection(t)
+	defer teardown()
+
+	output, err := client.CheckHealth()
 	assert.NoError(t, err)
+	assert.Equal(t, "OK", output)
 }
 
-func cleanupTestContent(t *testing.T, mongo *MongoDB, testUUIDs ...string) {
-	session := mongo.session.Copy()
-	defer session.Close()
-	for _, testUUID := range testUUIDs {
-		err := session.DB("upp-store").C("testing").Remove(bson.M{"uuid": testUUID})
-		assert.NoError(t, err)
+func insertTestContent(ctx context.Context, t *testing.T, client *Client, testContent map[string]interface{}) {
+	_, err := client.client.
+		Database("upp-store").
+		Collection("testing").
+		InsertOne(ctx, testContent)
+	require.NoError(t, err)
+}
+
+func cleanupTestContent(ctx context.Context, t *testing.T, client *Client, testUUIDs ...string) {
+	for _, uuid := range testUUIDs {
+		result, err := client.client.
+			Database("upp-store").
+			Collection("testing").
+			DeleteOne(ctx, bson.M{"uuid": uuid})
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, result.DeletedCount)
 	}
 }
 
@@ -205,12 +202,10 @@ func TestMongo_FindUUIDs(t *testing.T) {
 			expectedResultUUIDs: []string{"test-uuid-4", "test-uuid-6"},
 		},
 	}
-	mongo := startMongo(t)
-	defer mongo.Close()
+	client, teardown := setupConnection(t)
+	defer teardown()
 
-	tx, err := mongo.Open()
-	require.NoError(t, err)
-	defer tx.Close()
+	ctx := context.Background()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -225,26 +220,30 @@ func TestMongo_FindUUIDs(t *testing.T) {
 				if content.canBeDistributed != nil {
 					toInsert["canBeDistributed"] = content.canBeDistributed
 				}
-				insertTestContent(t, mongo.(*MongoDB), toInsert)
+				insertTestContent(ctx, t, client, toInsert)
 			}
-			defer cleanupTestContent(t, mongo.(*MongoDB), uuids...)
+			defer cleanupTestContent(ctx, t, client, uuids...)
 
-			iter, count, err := tx.FindUUIDs("testing", test.candidates)
+			readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+
+			iter, count, err := client.findContent(readCtx, test.candidates)
 			require.NoError(t, err)
-			defer func(iter Iterator) {
-				err := iter.Close()
-				if err != nil {
-					t.Logf("Failed to close iterator")
-				}
-			}(iter)
-			require.NoError(t, iter.Err())
-			require.Equal(t, len(test.expectedResultUUIDs), count)
 
-			var resultEntry map[string]interface{}
-			for iter.Next(&resultEntry) {
-				resUUID := resultEntry["uuid"].(string)
-				assert.Contains(t, test.expectedResultUUIDs, resUUID)
+			defer func() {
+				assert.NoError(t, iter.Close(ctx))
+			}()
+
+			require.Len(t, test.expectedResultUUIDs, count)
+
+			for iter.Next(ctx) {
+				var entry map[string]interface{}
+				require.NoError(t, iter.Decode(&entry))
+
+				assert.Contains(t, test.expectedResultUUIDs, entry["uuid"].(string))
 			}
+
+			assert.NoError(t, iter.Err())
 		})
 	}
 }

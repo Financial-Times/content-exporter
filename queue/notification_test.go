@@ -1,12 +1,12 @@
 package queue
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -34,85 +34,81 @@ func (m *mockUpdater) Delete(uuid, tid string) error {
 	return args.Error(0)
 }
 
-func TestKafkaContentNotificationHandlerHandleUpdateSuccessfully(t *testing.T) {
+func TestNotificationHandler_HandleUpdateSuccessfully(t *testing.T) {
 	fetcher := new(mockFetcher)
 	updater := new(mockUpdater)
 	n := &Notification{Stub: content.Stub{Date: "aDate", UUID: "uuid1"}, Tid: "tid_1234", EvType: UPDATE, Terminator: export.NewTerminator()}
-	contentNotificationHandler := NewContentNotificationHandler(content.NewExporter(fetcher, updater), 0)
+	contentNotificationHandler := NewNotificationHandler(content.NewExporter(fetcher, updater), 0)
 
 	var testData []byte
 	fetcher.On("GetContent", n.Stub.UUID, n.Tid).Return(testData, nil)
 	updater.On("Upload", testData, n.Tid, n.Stub.UUID, n.Stub.Date).Return(nil)
 
-	err := contentNotificationHandler.HandleContentNotification(n)
+	err := contentNotificationHandler.handleNotification(n)
 
 	assert.NoError(t, err)
 	fetcher.AssertExpectations(t)
 	updater.AssertExpectations(t)
 }
 
-func TestKafkaContentNotificationHandlerHandleUpdateWithError(t *testing.T) {
+func TestNotificationHandler_HandleUpdateWithError(t *testing.T) {
 	fetcher := new(mockFetcher)
 	updater := new(mockUpdater)
 	n := &Notification{Stub: content.Stub{Date: "aDate", UUID: "uuid1"}, Tid: "tid_1234", EvType: UPDATE, Terminator: export.NewTerminator()}
-	contentNotificationHandler := NewContentNotificationHandler(content.NewExporter(fetcher, updater), 0)
+	contentNotificationHandler := NewNotificationHandler(content.NewExporter(fetcher, updater), 0)
 	var testData []byte
-	fetcher.On("GetContent", n.Stub.UUID, n.Tid).Return(testData, errors.New("Fetcher err"))
+	fetcher.On("GetContent", n.Stub.UUID, n.Tid).Return(testData, fmt.Errorf("fetcher err"))
 
-	err := contentNotificationHandler.HandleContentNotification(n)
+	err := contentNotificationHandler.handleNotification(n)
 
 	assert.Error(t, err)
-	assert.Equal(t, "UPDATE ERROR: error getting content for uuid1: Fetcher err", err.Error())
+	assert.EqualError(t, err, "exporting content: getting content: fetcher err")
 	fetcher.AssertExpectations(t)
 	updater.AssertExpectations(t)
 }
 
-func TestKafkaContentNotificationHandlerHandleUpdateWithQuitSignal(t *testing.T) {
+func TestNotificationHandler_HandleUpdateWithQuitSignal(t *testing.T) {
 	fetcher := new(mockFetcher)
 	updater := new(mockUpdater)
 	n := &Notification{Stub: content.Stub{Date: "aDate", UUID: "uuid1"}, Tid: "tid_1234", EvType: UPDATE, Terminator: export.NewTerminator()}
-	contentNotificationHandler := NewContentNotificationHandler(content.NewExporter(fetcher, updater), 30)
+	contentNotificationHandler := NewNotificationHandler(content.NewExporter(fetcher, updater), 30)
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		n.Quit <- struct{}{}
 	}()
-	err := contentNotificationHandler.HandleContentNotification(n)
+	err := contentNotificationHandler.handleNotification(n)
 
 	assert.Error(t, err)
-	assert.Equal(t, "Shutdown signalled, delay waiting for UPDATE event terminated abruptly", err.Error())
+	assert.EqualError(t, err, "delayed update terminated due to shutdown signal")
 	fetcher.AssertExpectations(t)
 	updater.AssertExpectations(t)
 }
 
-func TestKafkaContentNotificationHandlerHandleDeleteSuccessfully(t *testing.T) {
+func TestNotificationHandler_HandleDeleteSuccessfully(t *testing.T) {
 	fetcher := new(mockFetcher)
 	updater := new(mockUpdater)
 	n := &Notification{Stub: content.Stub{Date: "aDate", UUID: "uuid1"}, Tid: "tid_1234", EvType: DELETE, Terminator: export.NewTerminator()}
-	contentNotificationHandler := NewContentNotificationHandler(content.NewExporter(fetcher, updater), 0)
+	contentNotificationHandler := NewNotificationHandler(content.NewExporter(fetcher, updater), 0)
 	updater.On("Delete", n.Stub.UUID, n.Tid).Return(nil)
 
-	err := contentNotificationHandler.HandleContentNotification(n)
+	err := contentNotificationHandler.handleNotification(n)
 
 	assert.NoError(t, err)
 	fetcher.AssertExpectations(t)
 	updater.AssertExpectations(t)
 }
 
-func TestKafkaContentNotificationHandlerHandleDeleteWithError(t *testing.T) {
+func TestNotificationHandler_HandleDeleteWithError(t *testing.T) {
 	fetcher := new(mockFetcher)
 	updater := new(mockUpdater)
 	n := &Notification{Stub: content.Stub{Date: "aDate", UUID: "uuid1"}, Tid: "tid_1234", EvType: DELETE, Terminator: export.NewTerminator()}
-	contentNotificationHandler := NewContentNotificationHandler(content.NewExporter(fetcher, updater), 0)
-	updater.On("Delete", n.Stub.UUID, n.Tid).Return(errors.New("Updater err"))
+	contentNotificationHandler := NewNotificationHandler(content.NewExporter(fetcher, updater), 0)
+	updater.On("Delete", n.Stub.UUID, n.Tid).Return(fmt.Errorf("updater err"))
 
-	err := contentNotificationHandler.HandleContentNotification(n)
+	err := contentNotificationHandler.handleNotification(n)
 
 	assert.Error(t, err)
-	assert.Equal(t, "DELETE ERROR: Updater err", err.Error())
+	assert.EqualError(t, err, "deleting content: updater err")
 	fetcher.AssertExpectations(t)
 	updater.AssertExpectations(t)
-}
-
-func NewContentNotificationHandler(exporter *content.Exporter, delay int) ContentNotificationHandler {
-	return NewKafkaContentNotificationHandler(exporter, delay)
 }

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,19 +13,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Financial-Times/go-logger/v2"
-	log "github.com/sirupsen/logrus"
-
 	"github.com/Financial-Times/content-exporter/content"
-	"github.com/Financial-Times/content-exporter/db"
 	"github.com/Financial-Times/content-exporter/export"
+	"github.com/Financial-Times/content-exporter/mongo"
 	"github.com/Financial-Times/content-exporter/queue"
 	"github.com/Financial-Times/content-exporter/web"
 	health "github.com/Financial-Times/go-fthealth/v1_1"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	"github.com/Financial-Times/kafka-client-go/v3"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
-
 	"github.com/gorilla/mux"
 	cli "github.com/jawher/mow.cli"
 	"github.com/rcrowley/go-metrics"
@@ -58,17 +55,35 @@ func main() {
 		Desc:   "Port to listen on",
 		EnvVar: "APP_PORT",
 	})
-	mongos := app.String(cli.StringOpt{
+	mongoAddress := app.String(cli.StringOpt{
 		Name:   "mongoConnection",
 		Value:  "",
 		Desc:   "Mongo addresses to connect to in format: host1:port1,host2:port2,...]",
 		EnvVar: "MONGO_CONNECTION",
 	})
-	enrichedContentBaseURL := app.String(cli.StringOpt{
-		Name:   "enrichedContentBaseURL",
-		Value:  "http://localhost:8080",
-		Desc:   "Base URL to enriched content endpoint",
-		EnvVar: "ENRICHED_CONTENT_BASE_URL",
+	mongoTimeout := app.Int(cli.IntOpt{
+		Name:   "mongoTimeout",
+		Desc:   "Mongo session connection timeout in seconds. (e.g. 60)",
+		EnvVar: "MONGO_TIMEOUT",
+		Value:  60,
+	})
+	mongoDatabase := app.String(cli.StringOpt{
+		Name:   "mongoConnection",
+		Value:  "upp-store",
+		Desc:   "Mongo database to read from",
+		EnvVar: "MONGO_DATABASE",
+	})
+	mongoCollection := app.String(cli.StringOpt{
+		Name:   "mongoCollection",
+		Value:  "content",
+		Desc:   "Mongo collection to read from",
+		EnvVar: "MONGO_COLLECTION",
+	})
+	enrichedContentAPIURL := app.String(cli.StringOpt{
+		Name:   "enrichedContentAPIURL",
+		Value:  "http://localhost:8080/enrichedcontent/",
+		Desc:   "API URL to enriched content endpoint",
+		EnvVar: "ENRICHED_CONTENT_API_URL",
 	})
 	enrichedContentHealthURL := app.String(cli.StringOpt{
 		Name:   "enrichedContentHealthURL",
@@ -76,11 +91,11 @@ func main() {
 		Desc:   "Health URL to enriched content endpoint",
 		EnvVar: "ENRICHED_CONTENT_HEALTH_URL",
 	})
-	s3WriterBaseURL := app.String(cli.StringOpt{
-		Name:   "s3WriterBaseURL",
-		Value:  "http://localhost:8080",
-		Desc:   "Base URL to S3 writer endpoint",
-		EnvVar: "S3_WRITER_BASE_URL",
+	s3WriterAPIURL := app.String(cli.StringOpt{
+		Name:   "s3WriterAPIURL",
+		Value:  "http://localhost:8080/content/",
+		Desc:   "API URL to S3 writer endpoint",
+		EnvVar: "S3_WRITER_API_URL",
 	})
 	s3WriterHealthURL := app.String(cli.StringOpt{
 		Name:   "s3WriterHealthURL",
@@ -155,89 +170,118 @@ func main() {
 		EnvVar: "ALLOWED_CONTENT_TYPES",
 	})
 
+	log := logger.NewUPPLogger(serviceName, *logLevel)
+
 	app.Before = func() {
-		if err := checkMongoURLs(*mongos); err != nil {
+		if err := checkMongoURLs(*mongoAddress); err != nil {
 			app.PrintHelp()
-			log.Fatalf("Mongo connection is not set correctly: %s", err.Error())
+			log.WithError(err).Fatal("Mongo connection is not set correctly")
 		}
-		_, err := regexp.Compile(*contentOriginAllowlist)
-		if err != nil {
-			app.PrintHelp()
-			log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
-		}
+		_ = regexp.MustCompile(*contentOriginAllowlist)
 	}
 
 	app.Action = func() {
+		timeout := time.Duration(*mongoTimeout) * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
 
-		log := logger.NewUPPLogger(serviceName, *logLevel)
-
-		log.WithField("event", "service_started").WithField("app-name", *appName).Info("Service started")
-
-		mongo := db.NewMongoDatabase(*mongos, 100)
-
-		tr := &http.Transport{
-			MaxIdleConnsPerHost: 128,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
+		mongoClient, err := mongo.NewClient(ctx, *mongoAddress, *mongoDatabase, *mongoCollection, log)
+		if err != nil {
+			log.WithError(err).Fatal("Error establishing mongo connection")
 		}
-		c := &http.Client{
-			Transport: tr,
-			Timeout:   30 * time.Second,
-		}
-		client := pester.NewExtendedClient(c)
-		client.Backoff = pester.ExponentialBackoff
-		client.MaxRetries = 3
-		client.Concurrency = 1
 
-		fetcher := &content.EnrichedContentFetcher{
-			Client:                   client,
-			EnrichedContentBaseURL:   *enrichedContentBaseURL,
-			EnrichedContentHealthURL: *enrichedContentHealthURL,
-			XPolicyHeaderValues:      *xPolicyHeaderValues,
-			Authorization:            *authorization,
-		}
-		uploader := &content.S3Updater{Client: client, S3WriterBaseURL: *s3WriterBaseURL, S3WriterHealthURL: *s3WriterHealthURL}
+		apiClient := newAPIClient()
+		healthClient := newHealthClient()
+
+		fetcher := content.NewEnrichedContentFetcher(apiClient, healthClient, *enrichedContentAPIURL, *enrichedContentHealthURL, *xPolicyHeaderValues, *authorization)
+		uploader := content.NewS3Updater(apiClient, healthClient, *s3WriterAPIURL, *s3WriterHealthURL)
 
 		exporter := content.NewExporter(fetcher, uploader)
 		fullExporter := export.NewFullExporter(20, exporter)
 		locker := export.NewLocker()
-		var kafkaListener *queue.KafkaListener
+		var kafkaListener *queue.Listener
 		if *isIncExportEnabled {
-			kafkaListener = prepareIncrementalExport(log, consumerAddrs, consumerGroupID, topic, contentOriginAllowlist, *allowedContentTypes, exporter, delayForNotification, locker, maxGoRoutines)
-			go kafkaListener.ConsumeMessages()
-			defer kafkaListener.StopConsumingMessages()
+			kafkaListener = prepareIncrementalExport(
+				log,
+				consumerAddrs,
+				consumerGroupID,
+				topic,
+				contentOriginAllowlist,
+				*allowedContentTypes,
+				exporter,
+				delayForNotification,
+				locker,
+				maxGoRoutines,
+			)
+			go kafkaListener.Start()
+			defer kafkaListener.Stop()
 		} else {
 			log.Warn("INCREMENTAL export is not enabled")
 		}
 
-		healthService := newHealthService(
-			&healthConfig{
-				appSystemCode:          *appSystemCode,
-				appName:                *appName,
-				port:                   *port,
-				db:                     mongo,
-				enrichedContentFetcher: fetcher,
-				s3Uploader:             uploader,
-				queueHandler:           kafkaListener,
-			}, fullExporter)
+		healthService := newHealthService(mongoClient, fetcher, uploader, kafkaListener, fullExporter)
+		inquirer := mongo.NewInquirer(mongoClient, log)
+		requestHandler := web.NewRequestHandler(fullExporter, inquirer, locker, *isIncExportEnabled, *contentRetrievalThrottle, log)
+		go serveEndpoints(*appSystemCode, *appName, *port, log, requestHandler, healthService)
 
-		go serveEndpoints(*appSystemCode, *appName, *port, web.NewRequestHandler(fullExporter, content.NewMongoInquirer(mongo), locker, *isIncExportEnabled, *contentRetrievalThrottle), healthService)
+		log.
+			WithField("event", "service_started").
+			WithField("app-name", *appName).Info("Service started")
 
 		waitForSignal()
 		log.Info("Gracefully shut down")
-
 	}
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Errorf("App could not start, error=[%s]\n", err)
-		return
+		log.WithError(err).Fatal("App could not start")
 	}
 }
 
-func prepareIncrementalExport(logger *logger.UPPLogger, consumerAddrs *string, consumerGroupID *string, topic *string, contentOriginAllowlist *string, allowedContentTypes []string, exporter *content.Exporter, delayForNotification *int, locker *export.Locker, maxGoRoutines *int) *queue.KafkaListener {
+func newAPIClient() *pester.Client {
+	tr := &http.Transport{
+		MaxIdleConnsPerHost: 128,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+	}
+	c := &http.Client{
+		Transport: tr,
+		Timeout:   30 * time.Second,
+	}
+	client := pester.NewExtendedClient(c)
+	client.Backoff = pester.ExponentialBackoff
+	client.MaxRetries = 3
+	client.Concurrency = 1
+
+	return client
+}
+
+func newHealthClient() *http.Client {
+	tr := &http.Transport{
+		MaxIdleConnsPerHost: 10,
+		DialContext: (&net.Dialer{
+			Timeout:   3 * time.Second,
+			KeepAlive: 3 * time.Second,
+		}).DialContext,
+	}
+
+	return &http.Client{
+		Transport: tr,
+		Timeout:   3 * time.Second,
+	}
+}
+
+func prepareIncrementalExport(
+	log *logger.UPPLogger,
+	consumerAddrs, consumerGroupID, topic, contentOriginAllowlist *string,
+	allowedContentTypes []string,
+	exporter *content.Exporter,
+	delayForNotification *int,
+	locker *export.Locker,
+	maxGoRoutines *int,
+) *queue.Listener {
 	config := kafka.ConsumerConfig{
 		BrokersConnectionString: *consumerAddrs,
 		ConsumerGroup:           *consumerGroupID,
@@ -246,26 +290,21 @@ func prepareIncrementalExport(logger *logger.UPPLogger, consumerAddrs *string, c
 	topics := []*kafka.Topic{
 		kafka.NewTopic(*topic),
 	}
-	messageConsumer := kafka.NewConsumer(config, topics, logger)
+	messageConsumer := kafka.NewConsumer(config, topics, log)
 
-	contentOriginAllowListRegex, err := regexp.Compile(*contentOriginAllowlist)
-	if err != nil {
-		log.WithError(err).Fatal("contentOriginAllowlist regex MUST compile!")
-	}
+	contentOriginAllowListRegex := regexp.MustCompile(*contentOriginAllowlist)
 
-	kafkaMessageHandler := queue.NewKafkaContentNotificationHandler(exporter, *delayForNotification)
-	kafkaMessageMapper := queue.NewKafkaMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
-	kafkaListener := queue.NewKafkaListener(messageConsumer, kafkaMessageHandler, kafkaMessageMapper, locker, *maxGoRoutines)
+	messageHandler := queue.NewNotificationHandler(exporter, *delayForNotification)
+	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
+	listener := queue.NewListener(messageConsumer, messageHandler, messageMapper, locker, *maxGoRoutines, log)
 
-	return kafkaListener
+	return listener
 }
 
-func serveEndpoints(appSystemCode string, appName string, port string, requestHandler *web.RequestHandler,
-	healthService *healthService) {
-
+func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, requestHandler *web.RequestHandler, healthService *healthService) {
 	serveMux := http.NewServeMux()
 
-	hc := health.HealthCheck{SystemCode: appSystemCode, Name: appName, Description: appDescription, Checks: healthService.checks}
+	hc := health.HealthCheck{SystemCode: appSystemCode, Name: appName, Description: appDescription, Checks: healthService.healthChecks}
 	serveMux.HandleFunc(healthPath, health.Handler(hc))
 	serveMux.HandleFunc(status.GTGPath, status.NewGoodToGoHandler(healthService.GTG))
 	serveMux.HandleFunc(status.BuildInfoPath, status.BuildInfoHandler)
@@ -276,7 +315,7 @@ func serveEndpoints(appSystemCode string, appName string, port string, requestHa
 	servicesRouter.HandleFunc("/jobs", requestHandler.GetRunningJobs).Methods(http.MethodGet)
 
 	var monitoringRouter http.Handler = servicesRouter
-	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.StandardLogger(), monitoringRouter)
+	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.Logger, monitoringRouter)
 	monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
 
 	serveMux.Handle("/", monitoringRouter)
@@ -317,7 +356,7 @@ func waitForSignal() {
 
 func checkMongoURLs(providedMongoURLs string) error {
 	if providedMongoURLs == "" {
-		return errors.New("MongoDB urls are missing")
+		return fmt.Errorf("mongoDB urls are missing")
 	}
 
 	mongoURLs := strings.Split(providedMongoURLs, ",")
@@ -325,10 +364,10 @@ func checkMongoURLs(providedMongoURLs string) error {
 	for _, mongoURL := range mongoURLs {
 		host, port, err := net.SplitHostPort(mongoURL)
 		if err != nil {
-			return fmt.Errorf("cannot split MongoDB URL: %s into host and port. Error is: %s", mongoURL, err.Error())
+			return fmt.Errorf("cannot split MongoDB URL: %s into host and port: %w", mongoURL, err)
 		}
 		if host == "" || port == "" {
-			return fmt.Errorf("one of the MongoDB URLs is incomplete: %s. It should have host and port", mongoURL)
+			return fmt.Errorf("one of the MongoDB URLs is incomplete: %s", mongoURL)
 		}
 	}
 

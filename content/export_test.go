@@ -1,22 +1,22 @@
 package content
 
 import (
+	"fmt"
 	"testing"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestExporterHandleContentWithValidContent(t *testing.T) {
 	tid := "tid_1234"
-	stubUuid := "uuid1"
+	stubUUID := "uuid1"
 	date := "2017-10-09"
-	testData := []byte(stubUuid)
-	fetcher := &mockFetcher{t: t, expectedUuid: stubUuid, expectedTid: tid, result: testData}
-	updater := &mockUpdater{t: t, expectedUuid: stubUuid, expectedTid: tid, expectedDate: date, expectedPayload: testData}
+	testData := []byte(stubUUID)
+	fetcher := &mockFetcher{t: t, expectedUUID: stubUUID, expectedTid: tid, result: testData}
+	updater := &mockUpdater{t: t, expectedUUID: stubUUID, expectedTid: tid, expectedDate: date, expectedPayload: testData}
 
 	exporter := NewExporter(fetcher, updater)
-	err := exporter.HandleContent(tid, Stub{stubUuid, date, "", nil})
+	err := exporter.Export(tid, &Stub{stubUUID, date, "", nil})
 
 	assert.NoError(t, err)
 	assert.True(t, fetcher.called)
@@ -25,48 +25,48 @@ func TestExporterHandleContentWithValidContent(t *testing.T) {
 
 func TestExporterHandleContentWithErrorFromFetcher(t *testing.T) {
 	tid := "tid_1234"
-	stubUuid := "uuid1"
+	stubUUID := "uuid1"
 	date := "2017-10-09"
-	testData := []byte("uuid: " + stubUuid)
-	fetcher := &mockFetcher{t: t, expectedUuid: stubUuid, expectedTid: tid, result: testData, err: errors.New("fetcher err")}
+	testData := []byte("uuid: " + stubUUID)
+	fetcher := &mockFetcher{t: t, expectedUUID: stubUUID, expectedTid: tid, result: testData, err: fmt.Errorf("fetcher err")}
 	updater := &mockUpdater{t: t}
 
 	exporter := NewExporter(fetcher, updater)
-	err := exporter.HandleContent(tid, Stub{stubUuid, date, "", nil})
+	err := exporter.Export(tid, &Stub{stubUUID, date, "", nil})
 
 	assert.Error(t, err)
-	assert.Equal(t, "error getting content for uuid1: fetcher err", err.Error())
+	assert.EqualError(t, err, "getting content: fetcher err")
 	assert.True(t, fetcher.called)
 	assert.False(t, updater.called)
 }
 
 func TestExporterHandleContentWithErrorFromUpdater(t *testing.T) {
 	tid := "tid_1234"
-	stubUuid := "uuid1"
+	stubUUID := "uuid1"
 	date := "2017-10-09"
-	testData := []byte("uuid: " + stubUuid)
-	fetcher := &mockFetcher{t: t, expectedUuid: stubUuid, expectedTid: tid, result: testData}
-	updater := &mockUpdater{t: t, expectedUuid: stubUuid, expectedTid: tid, expectedDate: date, expectedPayload: testData, err: errors.New("updater err")}
+	testData := []byte("uuid: " + stubUUID)
+	fetcher := &mockFetcher{t: t, expectedUUID: stubUUID, expectedTid: tid, result: testData}
+	updater := &mockUpdater{t: t, expectedUUID: stubUUID, expectedTid: tid, expectedDate: date, expectedPayload: testData, err: fmt.Errorf("updater err")}
 
 	exporter := NewExporter(fetcher, updater)
-	err := exporter.HandleContent(tid, Stub{stubUuid, date, "", nil})
+	err := exporter.Export(tid, &Stub{stubUUID, date, "", nil})
 
 	assert.Error(t, err)
-	assert.Equal(t, "error uploading content for uuid1: updater err", err.Error())
+	assert.EqualError(t, err, "uploading content: updater err")
 	assert.True(t, fetcher.called)
 	assert.True(t, updater.called)
 }
 
 type mockFetcher struct {
 	t                         *testing.T
-	expectedUuid, expectedTid string
+	expectedUUID, expectedTid string
 	result                    []byte
 	err                       error
 	called                    bool
 }
 
 func (f *mockFetcher) GetContent(uuid, tid string) ([]byte, error) {
-	assert.Equal(f.t, f.expectedUuid, uuid)
+	assert.Equal(f.t, f.expectedUUID, uuid)
 	assert.Equal(f.t, f.expectedTid, tid)
 	f.called = true
 	return f.result, f.err
@@ -74,14 +74,14 @@ func (f *mockFetcher) GetContent(uuid, tid string) ([]byte, error) {
 
 type mockUpdater struct {
 	t                                       *testing.T
-	expectedUuid, expectedTid, expectedDate string
+	expectedUUID, expectedTid, expectedDate string
 	expectedPayload                         []byte
 	err                                     error
 	called                                  bool
 }
 
 func (u *mockUpdater) Upload(content []byte, tid, uuid, date string) error {
-	assert.Equal(u.t, u.expectedUuid, uuid)
+	assert.Equal(u.t, u.expectedUUID, uuid)
 	assert.Equal(u.t, u.expectedTid, tid)
 	assert.Equal(u.t, u.expectedDate, date)
 	assert.Equal(u.t, u.expectedPayload, content)

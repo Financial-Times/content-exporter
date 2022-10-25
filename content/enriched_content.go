@@ -2,30 +2,40 @@ package content
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
-type Client interface {
+type httpClient interface {
 	Do(req *http.Request) (resp *http.Response, err error)
 }
 
-const enrichedContentPath = "/enrichedcontent/"
-
-type Fetcher interface {
+type fetcher interface {
 	GetContent(uuid, tid string) ([]byte, error)
 }
 
 type EnrichedContentFetcher struct {
-	Client                   Client
-	EnrichedContentBaseURL   string
-	EnrichedContentHealthURL string
-	XPolicyHeaderValues      string
-	Authorization            string
+	apiClient                httpClient
+	healthClient             httpClient
+	enrichedContentAPIURL    string
+	enrichedContentHealthURL string
+	xPolicyHeaderValues      string
+	authorization            string
+}
+
+func NewEnrichedContentFetcher(apiClient, healthClient httpClient, enrichedContentAPIURL, enrichedContentHealthURL, xPolicyHeaderValues, authorization string) *EnrichedContentFetcher {
+	return &EnrichedContentFetcher{
+		apiClient:                apiClient,
+		healthClient:             healthClient,
+		enrichedContentAPIURL:    enrichedContentAPIURL,
+		enrichedContentHealthURL: enrichedContentHealthURL,
+		xPolicyHeaderValues:      xPolicyHeaderValues,
+		authorization:            authorization,
+	}
 }
 
 func (e *EnrichedContentFetcher) GetContent(uuid, tid string) ([]byte, error) {
-	req, err := http.NewRequest("GET", e.EnrichedContentBaseURL+enrichedContentPath+uuid, nil)
+	req, err := http.NewRequest("GET", e.enrichedContentAPIURL+uuid, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -33,45 +43,42 @@ func (e *EnrichedContentFetcher) GetContent(uuid, tid string) ([]byte, error) {
 	req.Header.Add("Accept", "application/json")
 	req.Header.Add("X-Request-Id", tid)
 
-	if e.XPolicyHeaderValues != "" {
-		req.Header.Add("X-Policy", e.XPolicyHeaderValues)
+	if e.xPolicyHeaderValues != "" {
+		req.Header.Add("X-Policy", e.xPolicyHeaderValues)
 	}
-	if e.Authorization != "" {
-		req.Header.Add("Authorization", e.Authorization)
+	if e.authorization != "" {
+		req.Header.Add("Authorization", e.authorization)
 	}
 
-	resp, err := e.Client.Do(req)
+	resp, err := e.apiClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if resp.StatusCode == http.StatusForbidden {
-			return nil, fmt.Errorf("access to content is forbidden. Skipping")
-		}
-		return nil, fmt.Errorf("EnrichedContent returned HTTP %v", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching enriched content failed with unexpected status code: %d", resp.StatusCode)
 	}
 
-	return ioutil.ReadAll(resp.Body)
+	return io.ReadAll(resp.Body)
 }
 
-func (e *EnrichedContentFetcher) CheckHealth(client Client) (string, error) {
-	req, err := http.NewRequest("GET", e.EnrichedContentHealthURL, nil)
+func (e *EnrichedContentFetcher) CheckHealth() (string, error) {
+	req, err := http.NewRequest("GET", e.enrichedContentHealthURL, nil)
 	if err != nil {
-		return "Error in building request to check if the enrichedContent fetcher is good to go", err
+		return "", err
 	}
 
-	if e.Authorization != "" {
-		req.Header.Add("Authorization", e.Authorization)
+	if e.authorization != "" {
+		req.Header.Add("Authorization", e.authorization)
 	}
-	resp, err := client.Do(req)
+	resp, err := e.healthClient.Do(req)
 	if err != nil {
-		return "Error in getting request to check if the enrichedContent fetcher is good to go", err
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "EnrichedContent fetcher is not good to go.", fmt.Errorf("GTG HTTP status code is %v", resp.StatusCode)
+		return "", fmt.Errorf("GTG failed with unexpected status code: %d", resp.StatusCode)
 	}
 	return "EnrichedContent fetcher is good to go.", nil
 }

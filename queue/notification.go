@@ -6,14 +6,14 @@ import (
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 )
 
 type EventType string
 
-const UPDATE EventType = "UPDATE"
-const DELETE EventType = "DELETE"
+const (
+	UPDATE EventType = "UPDATE"
+	DELETE EventType = "DELETE"
+)
 
 type Notification struct {
 	Stub   content.Stub
@@ -22,45 +22,39 @@ type Notification struct {
 	*export.Terminator
 }
 
-type ContentNotificationHandler interface {
-	HandleContentNotification(n *Notification) error
+type NotificationHandler struct {
+	exporter *content.Exporter
+	delay    int
 }
 
-type KafkaContentNotificationHandler struct {
-	ContentExporter *content.Exporter
-	Delay           int
-}
-
-func NewKafkaContentNotificationHandler(exporter *content.Exporter, delayForNotification int) *KafkaContentNotificationHandler {
-	return &KafkaContentNotificationHandler{
-		ContentExporter: exporter,
-		Delay:           delayForNotification,
+func NewNotificationHandler(exporter *content.Exporter, delayForNotification int) *NotificationHandler {
+	return &NotificationHandler{
+		exporter: exporter,
+		delay:    delayForNotification,
 	}
 }
 
-func (h *KafkaContentNotificationHandler) HandleContentNotification(n *Notification) error {
-	logEntry := log.WithField("transaction_id", n.Tid).WithField("uuid", n.Stub.UUID)
-	if n.EvType == UPDATE {
-		logEntry.Infof("UPDATE event received. Waiting configured delay - %v second(s)", h.Delay)
-
+func (h *NotificationHandler) handleNotification(n *Notification) error {
+	switch n.EvType {
+	case UPDATE:
 		select {
-		case <-time.After(time.Duration(h.Delay) * time.Second):
+		case <-time.After(time.Duration(h.delay) * time.Second):
 		case <-n.Quit:
-			err := errors.New("Shutdown signalled, delay waiting for UPDATE event terminated abruptly")
-			return err
+			return fmt.Errorf("delayed update terminated due to shutdown signal")
 		}
-		if err := h.ContentExporter.HandleContent(n.Tid, n.Stub); err != nil {
-			return fmt.Errorf("UPDATE ERROR: %v", err)
+
+		if err := h.exporter.Export(n.Tid, &n.Stub); err != nil {
+			return fmt.Errorf("exporting content: %w", err)
 		}
-	} else if n.EvType == DELETE {
-		logEntry.Info("DELETE event received")
-		if err := h.ContentExporter.Updater.Delete(n.Stub.UUID, n.Tid); err != nil {
-			if err == content.ErrNotFound {
-				logEntry.Warnf("DELETE WARN: %v", err)
-				return nil
-			}
-			return fmt.Errorf("DELETE ERROR: %v", err)
+
+	case DELETE:
+		if err := h.exporter.Delete(n.Stub.UUID, n.Tid); err != nil {
+			return fmt.Errorf("deleting content: %w", err)
 		}
+
+	default:
+		return fmt.Errorf("unsupported event type")
 	}
+
 	return nil
 }

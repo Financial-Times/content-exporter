@@ -35,12 +35,12 @@ spec:
         env:
         - name: APP_NAME
           value: "{{ .Values.service.name }}"
-        - name: ENRICHED_CONTENT_BASE_URL
-          value: "{{ .Values.env.enrichedContent.baseUrl }}"
+        - name: ENRICHED_CONTENT_API_URL
+          value: "{{ .Values.env.enrichedContent.baseUrl }}/{{ .Values.env.enrichedContent.apiPath }}/"
         - name: ENRICHED_CONTENT_HEALTH_URL
           value: "{{ .Values.env.enrichedContent.baseUrl }}/__gtg"
-        - name: S3_WRITER_BASE_URL
-          value: "{{ .Values.env.s3Writer.baseUrl }}"
+        - name: S3_WRITER_API_URL
+          value: "{{ .Values.env.s3Writer.baseUrl }}/{{ .Values.env.s3Writer.apiPath }}/"
         - name: S3_WRITER_HEALTH_URL
           value: "{{ .Values.env.s3Writer.baseUrl }}/__gtg"
         - name: X_POLICY_HEADER_VALUES
@@ -52,6 +52,12 @@ spec:
             configMapKeyRef:
               name: global-config
               key: mongo.addresses
+        - name: MONGO_TIMEOUT
+          value: "{{ .Values.env.mongo.timeout }}"
+        - name: MONGO_DATABASE
+          value: "{{ .Values.env.mongo.database }}"
+        - name: MONGO_COLLECTION
+          value: "{{ .Values.env.mongo.collection }}"
         - name: KAFKA_ADDRS
           valueFrom:
             configMapKeyRef:
