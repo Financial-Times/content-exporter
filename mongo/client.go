@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Financial-Times/go-logger/v2"
+	"github.com/Financial-Times/upp-go-sdk/pkg/documentdb"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -20,11 +21,12 @@ type Client struct {
 	log        *logger.UPPLogger
 }
 
-func NewClient(ctx context.Context, uri, database, collection string, log *logger.UPPLogger) (*Client, error) {
-	uri = fmt.Sprintf("mongodb://%s", uri)
-	opts := options.Client().ApplyURI(uri)
-
-	client, err := mongo.Connect(ctx, opts)
+func NewClient(ctx context.Context, address, username, password, database, collection string, log *logger.UPPLogger) (*Client, error) {
+	client, err := documentdb.NewClient(ctx, documentdb.ConnectionParams{
+		Host:     address,
+		Username: username,
+		Password: password,
+	})
 	if err != nil {
 		return nil, err
 	}

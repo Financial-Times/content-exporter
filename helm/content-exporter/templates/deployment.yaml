@@ -47,17 +47,27 @@ spec:
           value: "{{ .Values.env.xPolicyHeaderValues }}"
         - name: ALLOWED_CONTENT_TYPES
           value: "{{ .Values.env.allowedContentTypes }}"
-        - name: MONGO_CONNECTION
+        - name: DB_NAME
+          value: "{{ .Values.env.db.database }}"
+        - name: DB_COLLECTION
+          value: "{{ .Values.env.db.collection }}"
+        - name: DOCDB_CLUSTER_ADDRESS
           valueFrom:
             configMapKeyRef:
               name: global-config
-              key: mongo.addresses
-        - name: MONGO_TIMEOUT
-          value: "{{ .Values.env.mongo.timeout }}"
-        - name: MONGO_DATABASE
-          value: "{{ .Values.env.mongo.database }}"
-        - name: MONGO_COLLECTION
-          value: "{{ .Values.env.mongo.collection }}"
+              key: aws.documentdb.cluster.address
+        - name: DOCDB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: global-secrets
+              key: aws.doc-db.username
+        - name: DOCDB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: global-secrets
+              key: aws.doc-db.password
+        - name: DB_TIMEOUT
+          value: "{{ .Values.env.db.timeout }}"
         - name: KAFKA_ADDRS
           valueFrom:
             configMapKeyRef:

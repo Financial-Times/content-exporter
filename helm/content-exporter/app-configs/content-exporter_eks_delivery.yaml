@@ -2,7 +2,7 @@
 service:
   name: content-exporter
 env:
-  mongo:
+  db:
     database: "upp-store"
     collection: "content"
     timeout: 60
