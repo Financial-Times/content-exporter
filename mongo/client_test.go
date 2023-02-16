@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -11,7 +12,27 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// integration tests runs with local mongo instance
+func mockNewClient(ctx context.Context, uri, database, collection string, log *logger.UPPLogger) (*Client, error) {
+	uri = fmt.Sprintf("mongodb://%s", uri)
+	opts := options.Client().ApplyURI(uri)
+
+	client, err := mongo.Connect(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{
+		client:     client,
+		database:   database,
+		collection: collection,
+		log:        log,
+	}, nil
+}
 
 func setupConnection(t *testing.T) (*Client, func()) {
 	if testing.Short() {
@@ -31,7 +52,7 @@ func setupConnection(t *testing.T) (*Client, func()) {
 
 	log := logger.NewUPPLogger("test", "PANIC")
 
-	client, err := NewClient(ctx, mongoURL, database, collection, log)
+	client, err := mockNewClient(ctx, mongoURL, database, collection, log)
 	require.NoError(t, err)
 
 	return client, func() {

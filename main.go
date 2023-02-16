@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"regexp"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -55,29 +53,42 @@ func main() {
 		Desc:   "Port to listen on",
 		EnvVar: "APP_PORT",
 	})
-	mongoAddress := app.String(cli.StringOpt{
-		Name:   "mongoConnection",
+	dbAddress := app.String(cli.StringOpt{
+		Name:   "dbAddress",
 		Value:  "",
-		Desc:   "Mongo addresses to connect to in format: host1:port1,host2:port2,...]",
-		EnvVar: "MONGO_CONNECTION",
+		Desc:   "DocumentDB address to connect to",
+		EnvVar: "DOCDB_CLUSTER_ADDRESS",
 	})
-	mongoTimeout := app.Int(cli.IntOpt{
-		Name:   "mongoTimeout",
+	dbUsername := app.String(cli.StringOpt{
+		Name:   "dbUsername",
+		Value:  "",
+		Desc:   "Username to connect to DocumentDB",
+		EnvVar: "DOCDB_USERNAME",
+	})
+	dbPassword := app.String(cli.StringOpt{
+		Name:   "dbPassword",
+		Value:  "",
+		Desc:   "Password to use to connect to DocumentDB",
+		EnvVar: "DOCDB_PASSWORD",
+	})
+
+	dbTimeout := app.Int(cli.IntOpt{
+		Name:   "dbTimeout",
 		Desc:   "Mongo session connection timeout in seconds. (e.g. 60)",
-		EnvVar: "MONGO_TIMEOUT",
+		EnvVar: "DB_TIMEOUT",
 		Value:  60,
 	})
-	mongoDatabase := app.String(cli.StringOpt{
-		Name:   "mongoConnection",
+	dbName := app.String(cli.StringOpt{
+		Name:   "dbName",
 		Value:  "upp-store",
 		Desc:   "Mongo database to read from",
-		EnvVar: "MONGO_DATABASE",
+		EnvVar: "DB_NAME",
 	})
-	mongoCollection := app.String(cli.StringOpt{
-		Name:   "mongoCollection",
+	dbCollection := app.String(cli.StringOpt{
+		Name:   "dbCollection",
 		Value:  "content",
 		Desc:   "Mongo collection to read from",
-		EnvVar: "MONGO_COLLECTION",
+		EnvVar: "DB_COLLECTION",
 	})
 	enrichedContentAPIURL := app.String(cli.StringOpt{
 		Name:   "enrichedContentAPIURL",
@@ -173,21 +184,17 @@ func main() {
 	log := logger.NewUPPLogger(serviceName, *logLevel)
 
 	app.Before = func() {
-		if err := checkMongoURLs(*mongoAddress); err != nil {
-			app.PrintHelp()
-			log.WithError(err).Fatal("Mongo connection is not set correctly")
-		}
 		_ = regexp.MustCompile(*contentOriginAllowlist)
 	}
 
 	app.Action = func() {
-		timeout := time.Duration(*mongoTimeout) * time.Second
+		timeout := time.Duration(*dbTimeout) * time.Second
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		mongoClient, err := mongo.NewClient(ctx, *mongoAddress, *mongoDatabase, *mongoCollection, log)
+		mongoClient, err := mongo.NewClient(ctx, *dbAddress, *dbUsername, *dbPassword, *dbName, *dbCollection, log)
 		if err != nil {
-			log.WithError(err).Fatal("Error establishing mongo connection")
+			log.WithError(err).Fatal("Error establishing DocumentDB connection")
 		}
 
 		apiClient := newAPIClient()
@@ -315,7 +322,7 @@ func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, 
 	servicesRouter.HandleFunc("/jobs", requestHandler.GetRunningJobs).Methods(http.MethodGet)
 
 	var monitoringRouter http.Handler = servicesRouter
-	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.Logger, monitoringRouter)
+	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log, monitoringRouter)
 	monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
 
 	serveMux.Handle("/", monitoringRouter)
@@ -352,24 +359,4 @@ func waitForSignal() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
-}
-
-func checkMongoURLs(providedMongoURLs string) error {
-	if providedMongoURLs == "" {
-		return fmt.Errorf("mongoDB urls are missing")
-	}
-
-	mongoURLs := strings.Split(providedMongoURLs, ",")
-
-	for _, mongoURL := range mongoURLs {
-		host, port, err := net.SplitHostPort(mongoURL)
-		if err != nil {
-			return fmt.Errorf("cannot split MongoDB URL: %s into host and port: %w", mongoURL, err)
-		}
-		if host == "" || port == "" {
-			return fmt.Errorf("one of the MongoDB URLs is incomplete: %s", mongoURL)
-		}
-	}
-
-	return nil
 }
