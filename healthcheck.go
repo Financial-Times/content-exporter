@@ -32,7 +32,7 @@ type exportStatusManager interface {
 }
 
 func newHealthService(dbChecker, readChecker, writeChecker healthChecker, queueChecker queueChecker, statusManager exportStatusManager) *healthService {
-	documentDBCheck := newDocumentDbCheck(dbChecker)
+	documentDBCheck := newDocumentDBCheck(dbChecker)
 	readerCheck := newReadEndpointCheck(readChecker)
 	writerCheck := newS3WriterCheck(writeChecker)
 
@@ -58,7 +58,7 @@ func newHealthService(dbChecker, readChecker, writeChecker healthChecker, queueC
 	}
 }
 
-func newDocumentDbCheck(checker healthChecker) health.Check {
+func newDocumentDBCheck(checker healthChecker) health.Check {
 	return health.Check{
 		Name:             "CheckConnectivityToDocumentDB",
 		BusinessImpact:   "No Business Impact.",
