@@ -5,10 +5,11 @@ go 1.18
 require (
 	github.com/Financial-Times/go-fthealth v0.0.0-20170525095041-e7ccca038327
 	github.com/Financial-Times/go-logger/v2 v2.0.1
-	github.com/Financial-Times/http-handlers-go v0.0.0-20170809121007-229ac16f1d9e
+	github.com/Financial-Times/http-handlers-go v1.0.0
 	github.com/Financial-Times/kafka-client-go/v3 v3.0.4
-	github.com/Financial-Times/service-status-go v0.0.0-20160323111542-3f5199736a3d
+	github.com/Financial-Times/service-status-go v0.0.0-20210115125138-41b7375f9b94
 	github.com/Financial-Times/transactionid-utils-go v0.2.0
+	github.com/Financial-Times/upp-go-sdk v1.3.3
 	github.com/google/go-cmp v0.5.7
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
@@ -29,7 +30,7 @@ require (
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
-	github.com/hashicorp/go-version v0.0.0-20170202080759-03c5bf6be031 // indirect
+	github.com/hashicorp/go-version v1.3.0 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
 	github.com/jcmturner/gofork v1.0.0 // indirect
@@ -47,10 +48,10 @@ require (
 	github.com/xdg-go/stringprep v1.0.3 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
