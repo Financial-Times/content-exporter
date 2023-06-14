@@ -59,13 +59,13 @@ spec:
         - name: DOCDB_USERNAME
           valueFrom:
             secretKeyRef:
-              name: global-secrets
-              key: aws.doc-db.username
+              name: doppler-global-secrets
+              key: AWS_DOC_DB_USERNAME
         - name: DOCDB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: global-secrets
-              key: aws.doc-db.password
+              name: doppler-global-secrets
+              key: AWS_DOC_DB_PASSWORD
         - name: DB_TIMEOUT
           value: "{{ .Values.env.db.timeout }}"
         - name: KAFKA_ADDRS
