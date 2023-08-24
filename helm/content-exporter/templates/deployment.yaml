@@ -51,21 +51,21 @@ spec:
           value: "{{ .Values.env.db.database }}"
         - name: DB_COLLECTION
           value: "{{ .Values.env.db.collection }}"
-        - name: DOCDB_CLUSTER_ADDRESS
+        - name: DB_CLUSTER_ADDRESS
           valueFrom:
             configMapKeyRef:
               name: global-config
-              key: aws.documentdb.cluster.address
-        - name: DOCDB_USERNAME
+              key: documentstore.cluster.address
+        - name: DB_USERNAME
           valueFrom:
             secretKeyRef:
               name: doppler-global-secrets
-              key: AWS_DOC_DB_USERNAME
-        - name: DOCDB_PASSWORD
+              key: DOCUMENT_STORE_CLUSTER_USERNAME
+        - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
               name: doppler-global-secrets
-              key: AWS_DOC_DB_PASSWORD
+              key: DOCUMENT_STORE_CLUSTER_PASSWORD
         - name: DB_TIMEOUT
           value: "{{ .Values.env.db.timeout }}"
         - name: KAFKA_ADDRS
@@ -73,6 +73,11 @@ spec:
             configMapKeyRef:
               name: global-config
               key: msk.kafka.broker.url
+        - name: KAFKA_CLUSTER_ARN
+          valueFrom:
+            configMapKeyRef:
+              name: global-config
+              key: msk.kafka.cluster.arn
         - name: IS_INC_EXPORT_ENABLED
           valueFrom:
             configMapKeyRef:

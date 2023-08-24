@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/IBM/sarama"
 	"net"
 	"net/http"
 	"os"
@@ -19,7 +20,7 @@ import (
 	health "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
-	"github.com/Financial-Times/kafka-client-go/v3"
+	"github.com/Financial-Times/kafka-client-go/v4"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
 	"github.com/gorilla/mux"
 	cli "github.com/jawher/mow.cli"
@@ -56,20 +57,20 @@ func main() {
 	dbAddress := app.String(cli.StringOpt{
 		Name:   "dbAddress",
 		Value:  "",
-		Desc:   "DocumentDB address to connect to",
-		EnvVar: "DOCDB_CLUSTER_ADDRESS",
+		Desc:   "Database address to connect to",
+		EnvVar: "DB_CLUSTER_ADDRESS",
 	})
 	dbUsername := app.String(cli.StringOpt{
 		Name:   "dbUsername",
 		Value:  "",
-		Desc:   "Username to connect to DocumentDB",
-		EnvVar: "DOCDB_USERNAME",
+		Desc:   "Username to connect to database",
+		EnvVar: "DB_USERNAME",
 	})
 	dbPassword := app.String(cli.StringOpt{
 		Name:   "dbPassword",
 		Value:  "",
-		Desc:   "Password to use to connect to DocumentDB",
-		EnvVar: "DOCDB_PASSWORD",
+		Desc:   "Password to use to connect to database",
+		EnvVar: "DB_PASSWORD",
 	})
 
 	dbTimeout := app.Int(cli.IntOpt{
@@ -194,7 +195,7 @@ func main() {
 
 		mongoClient, err := mongo.NewClient(ctx, *dbAddress, *dbUsername, *dbPassword, *dbName, *dbCollection, log)
 		if err != nil {
-			log.WithError(err).Fatal("Error establishing DocumentDB connection")
+			log.WithError(err).Fatal("Error establishing database connection")
 		}
 
 		apiClient := newAPIClient()
@@ -289,15 +290,23 @@ func prepareIncrementalExport(
 	locker *export.Locker,
 	maxGoRoutines *int,
 ) *queue.Listener {
+	kafkaClusterArn := os.Getenv("KAFKA_CLUSTER_ARN")
+	if kafkaClusterArn == "" {
+		log.Fatalf("Could not load kafka cluster ARN")
+	}
 	config := kafka.ConsumerConfig{
+		ClusterArn:              &kafkaClusterArn,
 		BrokersConnectionString: *consumerAddrs,
 		ConsumerGroup:           *consumerGroupID,
-		ConnectionRetryInterval: time.Minute,
+		Options:                 DefaultConsumerOptions(),
 	}
 	topics := []*kafka.Topic{
 		kafka.NewTopic(*topic),
 	}
-	messageConsumer := kafka.NewConsumer(config, topics, log)
+	messageConsumer, err := kafka.NewConsumer(config, topics, log)
+	if err != nil {
+		log.WithError(err).Fatal("Failed to create consumer")
+	}
 
 	contentOriginAllowListRegex := regexp.MustCompile(*contentOriginAllowlist)
 
@@ -359,4 +368,14 @@ func waitForSignal() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
+}
+
+// DefaultConsumerOptions returns a new sarama configuration with predefined default settings.
+func DefaultConsumerOptions() *sarama.Config {
+	config := sarama.NewConfig()
+	config.Consumer.Offsets.Initial = sarama.OffsetNewest
+	config.Consumer.MaxProcessingTime = 10 * time.Second
+	config.Consumer.Return.Errors = true
+	config.Consumer.Retry.Backoff = time.Minute
+	return config
 }

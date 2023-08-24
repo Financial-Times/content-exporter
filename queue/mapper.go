@@ -8,7 +8,7 @@ import (
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
-	"github.com/Financial-Times/kafka-client-go/v3"
+	"github.com/Financial-Times/kafka-client-go/v4"
 )
 
 const canBeDistributedYes = "yes"
