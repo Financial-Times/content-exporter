@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/IBM/sarama"
 	"net"
 	"net/http"
 	"os"
@@ -11,6 +10,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/IBM/sarama"
 
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
