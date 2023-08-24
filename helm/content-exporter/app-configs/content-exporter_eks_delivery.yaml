@@ -1,7 +1,7 @@
 # Values used for the deployed application.
 service:
   name: content-exporter
-  serviceAccountName: eksctl-upp-content-exporter-serviceaccount
+  serviceAccountName: eksctl-content-exporter-serviceaccount
 env:
   db:
     database: "upp-store"
