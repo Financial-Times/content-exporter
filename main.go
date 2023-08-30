@@ -11,8 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/IBM/sarama"
-
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/content-exporter/mongo"
@@ -299,7 +297,6 @@ func prepareIncrementalExport(
 		ClusterArn:              &kafkaClusterArn,
 		BrokersConnectionString: *consumerAddrs,
 		ConsumerGroup:           *consumerGroupID,
-		Options:                 DefaultConsumerOptions(),
 	}
 	topics := []*kafka.Topic{
 		kafka.NewTopic(*topic),
@@ -369,14 +366,4 @@ func waitForSignal() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
-}
-
-// DefaultConsumerOptions returns a new sarama configuration with predefined default settings.
-func DefaultConsumerOptions() *sarama.Config {
-	config := sarama.NewConfig()
-	config.Consumer.Offsets.Initial = sarama.OffsetNewest
-	config.Consumer.MaxProcessingTime = 10 * time.Second
-	config.Consumer.Return.Errors = true
-	config.Consumer.Retry.Backoff = time.Minute
-	return config
 }
