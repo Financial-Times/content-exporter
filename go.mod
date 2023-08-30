@@ -1,6 +1,6 @@
 module github.com/Financial-Times/content-exporter
 
-go 1.20
+go 1.21
 
 require (
 	github.com/Financial-Times/go-fthealth v0.0.0-20170525095041-e7ccca038327
@@ -10,6 +10,7 @@ require (
 	github.com/Financial-Times/service-status-go v0.2.0
 	github.com/Financial-Times/transactionid-utils-go v0.2.0
 	github.com/Financial-Times/upp-go-sdk v1.4.1
+	github.com/IBM/sarama v1.40.1
 	github.com/google/go-cmp v0.5.8
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
@@ -21,7 +22,6 @@ require (
 )
 
 require (
-	github.com/IBM/sarama v1.40.1 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.17.8 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.18.11 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.11 // indirect
