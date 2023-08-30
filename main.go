@@ -180,6 +180,11 @@ func main() {
 		Desc:   `Comma-separated list of ContentTypes`,
 		EnvVar: "ALLOWED_CONTENT_TYPES",
 	})
+	kafkaClusterArn := app.String(cli.StringOpt{
+		Name:   "kafkaClusterArn",
+		Desc:   "Kafka cluster ARN",
+		EnvVar: "KAFKA_CLUSTER_ARN",
+	})
 
 	log := logger.NewUPPLogger(serviceName, *logLevel)
 
@@ -207,6 +212,11 @@ func main() {
 		fullExporter := export.NewFullExporter(20, exporter)
 		locker := export.NewLocker()
 		var kafkaListener *queue.Listener
+
+		if *kafkaClusterArn == "" {
+			log.Fatalf("Could not load kafka cluster ARN")
+		}
+
 		if *isIncExportEnabled {
 			kafkaListener = prepareIncrementalExport(
 				log,
@@ -219,6 +229,7 @@ func main() {
 				delayForNotification,
 				locker,
 				maxGoRoutines,
+				*kafkaClusterArn,
 			)
 			go kafkaListener.Start()
 			defer kafkaListener.Stop()
@@ -288,11 +299,8 @@ func prepareIncrementalExport(
 	delayForNotification *int,
 	locker *export.Locker,
 	maxGoRoutines *int,
+	kafkaClusterArn string,
 ) *queue.Listener {
-	kafkaClusterArn := os.Getenv("KAFKA_CLUSTER_ARN")
-	if kafkaClusterArn == "" {
-		log.Fatalf("Could not load kafka cluster ARN")
-	}
 	config := kafka.ConsumerConfig{
 		ClusterArn:              &kafkaClusterArn,
 		BrokersConnectionString: *consumerAddrs,
