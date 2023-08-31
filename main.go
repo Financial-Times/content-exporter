@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -218,7 +219,7 @@ func main() {
 		}
 
 		if *isIncExportEnabled {
-			kafkaListener = prepareIncrementalExport(
+			kafkaListener, err = prepareIncrementalExport(
 				log,
 				consumerAddrs,
 				consumerGroupID,
@@ -231,6 +232,11 @@ func main() {
 				maxGoRoutines,
 				*kafkaClusterArn,
 			)
+
+			if err != nil {
+				log.WithError(err).Fatal("Failed to create consumer")
+			}
+
 			go kafkaListener.Start()
 			defer kafkaListener.Stop()
 		} else {
@@ -300,7 +306,7 @@ func prepareIncrementalExport(
 	locker *export.Locker,
 	maxGoRoutines *int,
 	kafkaClusterArn string,
-) *queue.Listener {
+) (*queue.Listener, error) {
 	config := kafka.ConsumerConfig{
 		ClusterArn:              &kafkaClusterArn,
 		BrokersConnectionString: *consumerAddrs,
@@ -311,7 +317,7 @@ func prepareIncrementalExport(
 	}
 	messageConsumer, err := kafka.NewConsumer(config, topics, log)
 	if err != nil {
-		log.WithError(err).Fatal("Failed to create consumer")
+		return nil, fmt.Errorf("failed to create consumer: %w", err)
 	}
 
 	contentOriginAllowListRegex := regexp.MustCompile(*contentOriginAllowlist)
@@ -320,7 +326,7 @@ func prepareIncrementalExport(
 	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
 	listener := queue.NewListener(messageConsumer, messageHandler, messageMapper, locker, *maxGoRoutines, log)
 
-	return listener
+	return listener, nil
 }
 
 func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, requestHandler *web.RequestHandler, healthService *healthService) {
