@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -19,7 +20,7 @@ import (
 	health "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
-	"github.com/Financial-Times/kafka-client-go/v3"
+	"github.com/Financial-Times/kafka-client-go/v4"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
 	"github.com/gorilla/mux"
 	cli "github.com/jawher/mow.cli"
@@ -56,20 +57,20 @@ func main() {
 	dbAddress := app.String(cli.StringOpt{
 		Name:   "dbAddress",
 		Value:  "",
-		Desc:   "DocumentDB address to connect to",
-		EnvVar: "DOCDB_CLUSTER_ADDRESS",
+		Desc:   "Database address to connect to",
+		EnvVar: "DB_CLUSTER_ADDRESS",
 	})
 	dbUsername := app.String(cli.StringOpt{
 		Name:   "dbUsername",
 		Value:  "",
-		Desc:   "Username to connect to DocumentDB",
-		EnvVar: "DOCDB_USERNAME",
+		Desc:   "Username to connect to database",
+		EnvVar: "DB_USERNAME",
 	})
 	dbPassword := app.String(cli.StringOpt{
 		Name:   "dbPassword",
 		Value:  "",
-		Desc:   "Password to use to connect to DocumentDB",
-		EnvVar: "DOCDB_PASSWORD",
+		Desc:   "Password to use to connect to database",
+		EnvVar: "DB_PASSWORD",
 	})
 
 	dbTimeout := app.Int(cli.IntOpt{
@@ -180,6 +181,11 @@ func main() {
 		Desc:   `Comma-separated list of ContentTypes`,
 		EnvVar: "ALLOWED_CONTENT_TYPES",
 	})
+	kafkaClusterArn := app.String(cli.StringOpt{
+		Name:   "kafkaClusterArn",
+		Desc:   "Kafka cluster ARN",
+		EnvVar: "KAFKA_CLUSTER_ARN",
+	})
 
 	log := logger.NewUPPLogger(serviceName, *logLevel)
 
@@ -194,7 +200,7 @@ func main() {
 
 		mongoClient, err := mongo.NewClient(ctx, *dbAddress, *dbUsername, *dbPassword, *dbName, *dbCollection, log)
 		if err != nil {
-			log.WithError(err).Fatal("Error establishing DocumentDB connection")
+			log.WithError(err).Fatal("Error establishing database connection")
 		}
 
 		apiClient := newAPIClient()
@@ -207,8 +213,13 @@ func main() {
 		fullExporter := export.NewFullExporter(20, exporter)
 		locker := export.NewLocker()
 		var kafkaListener *queue.Listener
+
+		if *kafkaClusterArn == "" {
+			log.Fatalf("Could not load kafka cluster ARN")
+		}
+
 		if *isIncExportEnabled {
-			kafkaListener = prepareIncrementalExport(
+			kafkaListener, err = prepareIncrementalExport(
 				log,
 				consumerAddrs,
 				consumerGroupID,
@@ -219,7 +230,13 @@ func main() {
 				delayForNotification,
 				locker,
 				maxGoRoutines,
+				*kafkaClusterArn,
 			)
+
+			if err != nil {
+				log.WithError(err).Fatal("Failed to create consumer")
+			}
+
 			go kafkaListener.Start()
 			defer kafkaListener.Stop()
 		} else {
@@ -288,16 +305,20 @@ func prepareIncrementalExport(
 	delayForNotification *int,
 	locker *export.Locker,
 	maxGoRoutines *int,
-) *queue.Listener {
+	kafkaClusterArn string,
+) (*queue.Listener, error) {
 	config := kafka.ConsumerConfig{
+		ClusterArn:              &kafkaClusterArn,
 		BrokersConnectionString: *consumerAddrs,
 		ConsumerGroup:           *consumerGroupID,
-		ConnectionRetryInterval: time.Minute,
 	}
 	topics := []*kafka.Topic{
 		kafka.NewTopic(*topic),
 	}
-	messageConsumer := kafka.NewConsumer(config, topics, log)
+	messageConsumer, err := kafka.NewConsumer(config, topics, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create consumer: %w", err)
+	}
 
 	contentOriginAllowListRegex := regexp.MustCompile(*contentOriginAllowlist)
 
@@ -305,7 +326,7 @@ func prepareIncrementalExport(
 	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
 	listener := queue.NewListener(messageConsumer, messageHandler, messageMapper, locker, *maxGoRoutines, log)
 
-	return listener
+	return listener, nil
 }
 
 func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, requestHandler *web.RequestHandler, healthService *healthService) {
