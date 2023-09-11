@@ -32,12 +32,12 @@ type exportStatusManager interface {
 }
 
 func newHealthService(dbChecker, readChecker, writeChecker healthChecker, queueChecker queueChecker, statusManager exportStatusManager) *healthService {
-	documentDBCheck := newDocumentDBCheck(dbChecker)
+	dbCheck := newDBCheck(dbChecker)
 	readerCheck := newReadEndpointCheck(readChecker)
 	writerCheck := newS3WriterCheck(writeChecker)
 
-	healthChecks := []health.Check{documentDBCheck, readerCheck, writerCheck}
-	gtgChecks := []health.Check{documentDBCheck, readerCheck, writerCheck}
+	healthChecks := []health.Check{dbCheck, readerCheck, writerCheck}
+	gtgChecks := []health.Check{dbCheck, readerCheck, writerCheck}
 
 	if !reflect.ValueOf(queueChecker).IsNil() {
 		kafkaConnectivityCheck := newKafkaConnectivityCheck(queueChecker)
@@ -58,13 +58,13 @@ func newHealthService(dbChecker, readChecker, writeChecker healthChecker, queueC
 	}
 }
 
-func newDocumentDBCheck(checker healthChecker) health.Check {
+func newDBCheck(checker healthChecker) health.Check {
 	return health.Check{
-		Name:             "CheckConnectivityToDocumentDB",
+		Name:             "CheckConnectivityToMongoDB",
 		BusinessImpact:   "No Business Impact.",
 		PanicGuide:       "https://runbooks.in.ft.com/content-exporter",
 		Severity:         2,
-		TechnicalSummary: "The service is unable to connect to DocumentDB. FULL or TARGETED export won't work because of this",
+		TechnicalSummary: "The service is unable to connect to database. FULL or TARGETED export won't work because of this",
 		Checker:          checker.CheckHealth,
 	}
 }
