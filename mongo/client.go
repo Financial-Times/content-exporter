@@ -15,10 +15,11 @@ import (
 )
 
 type Client struct {
-	client     *mongo.Client
-	database   string
-	collection string
-	log        *logger.UPPLogger
+	client                                   *mongo.Client
+	database                                 string
+	collection                               string
+	allowedContentTypes, allowedPublishUUIDs []string
+	log                                      *logger.UPPLogger
 }
 
 func NewClient(ctx context.Context, address, username, password, database, collection string, log *logger.UPPLogger) (*Client, error) {
@@ -43,7 +44,7 @@ func NewClient(ctx context.Context, address, username, password, database, colle
 func (c *Client) findContent(ctx context.Context, candidates []string) (cursor, int, error) {
 	collection := c.client.Database(c.database).Collection(c.collection)
 
-	query, projection := findUUIDsQueryElements(candidates)
+	query, projection := findUUIDsQueryElements(candidates, c.allowedContentTypes, c.allowedPublishUUIDs)
 	queryStr, _ := json.Marshal(query)
 	c.log.WithField("query", string(queryStr)).Debug("Generated query")
 
@@ -83,20 +84,32 @@ func (c *Client) Close(ctx context.Context) error {
 	return c.client.Disconnect(ctx)
 }
 
-func findUUIDsQueryElements(candidates []string) (bson.M, bson.M) {
+func findUUIDsQueryElements(candidates, allowedContentTypes, allowedPublishUUIDs []string) (bson.M, bson.M) {
+	//Mongo expects empty arrays not nil
+	if allowedContentTypes == nil {
+		allowedContentTypes = []string{}
+	}
+	if allowedPublishUUIDs == nil {
+		allowedPublishUUIDs = []string{}
+	}
+
 	andQuery := []bson.M{
 		{"$or": []bson.M{
 			{"canBeDistributed": "yes"},
 			{"canBeDistributed": bson.M{"$exists": false}},
 		}},
 		{"$and": []bson.M{
-			{"type": "Article"},
+			{"type": bson.M{"$in": allowedContentTypes}},
 			{"$or": []bson.M{
 				{"body": bson.M{"$ne": nil}},
 				{"bodyXML": bson.M{"$ne": nil}},
 			},
 			}},
 		},
+		{"$or": []bson.M{
+			{"publication": bson.M{"$in": allowedPublishUUIDs}},
+			{"publication": bson.M{"$exists": false}},
+		}},
 	}
 	if len(candidates) != 0 {
 		andQuery = append(andQuery, bson.M{"uuid": bson.M{"$in": candidates}})

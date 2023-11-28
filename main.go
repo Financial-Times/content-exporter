@@ -186,6 +186,12 @@ func main() {
 		Desc:   "Kafka cluster ARN",
 		EnvVar: "KAFKA_CLUSTER_ARN",
 	})
+	allowedPublishUUIDs := app.Strings(cli.StringsOpt{
+		Name:   "allowedPublishUUIDs",
+		Value:  []string{},
+		Desc:   `Comma-separated list of UUIDs`,
+		EnvVar: "ALLOWED_PUBLISH_UUIDS",
+	})
 
 	log := logger.NewUPPLogger(serviceName, *logLevel)
 
@@ -231,6 +237,7 @@ func main() {
 				locker,
 				maxGoRoutines,
 				*kafkaClusterArn,
+				*allowedPublishUUIDs,
 			)
 
 			if err != nil {
@@ -243,10 +250,10 @@ func main() {
 			log.Warn("INCREMENTAL export is not enabled")
 		}
 
-		healthService := newHealthService(mongoClient, fetcher, uploader, kafkaListener, fullExporter)
+		hService := newHealthService(mongoClient, fetcher, uploader, kafkaListener, fullExporter)
 		inquirer := mongo.NewInquirer(mongoClient, log)
 		requestHandler := web.NewRequestHandler(fullExporter, inquirer, locker, *isIncExportEnabled, *contentRetrievalThrottle, log)
-		go serveEndpoints(*appSystemCode, *appName, *port, log, requestHandler, healthService)
+		go serveEndpoints(*appSystemCode, *appName, *port, log, requestHandler, hService)
 
 		log.
 			WithField("event", "service_started").
@@ -306,6 +313,7 @@ func prepareIncrementalExport(
 	locker *export.Locker,
 	maxGoRoutines *int,
 	kafkaClusterArn string,
+	allowedPublishUUIDs []string,
 ) (*queue.Listener, error) {
 	config := kafka.ConsumerConfig{
 		ClusterArn:              &kafkaClusterArn,
@@ -323,7 +331,7 @@ func prepareIncrementalExport(
 	contentOriginAllowListRegex := regexp.MustCompile(*contentOriginAllowlist)
 
 	messageHandler := queue.NewNotificationHandler(exporter, *delayForNotification)
-	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
+	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes, allowedPublishUUIDs)
 	listener := queue.NewListener(messageConsumer, messageHandler, messageMapper, locker, *maxGoRoutines, log)
 
 	return listener, nil

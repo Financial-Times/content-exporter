@@ -17,7 +17,7 @@ import (
 )
 
 // integration tests runs with local mongo instance
-func mockNewClient(ctx context.Context, uri, database, collection string, log *logger.UPPLogger) (*Client, error) {
+func mockNewClient(ctx context.Context, uri, database, collection string, allowedContentTypes []string, log *logger.UPPLogger) (*Client, error) {
 	uri = fmt.Sprintf("mongodb://%s", uri)
 	opts := options.Client().ApplyURI(uri)
 
@@ -27,10 +27,11 @@ func mockNewClient(ctx context.Context, uri, database, collection string, log *l
 	}
 
 	return &Client{
-		client:     client,
-		database:   database,
-		collection: collection,
-		log:        log,
+		client:              client,
+		database:            database,
+		collection:          collection,
+		allowedContentTypes: allowedContentTypes,
+		log:                 log,
 	}, nil
 }
 
@@ -52,7 +53,7 @@ func setupConnection(t *testing.T) (*Client, func()) {
 
 	log := logger.NewUPPLogger("test", "PANIC")
 
-	client, err := mockNewClient(ctx, mongoURL, database, collection, log)
+	client, err := mockNewClient(ctx, mongoURL, database, collection, []string{"Article"}, log)
 	require.NoError(t, err)
 
 	return client, func() {
