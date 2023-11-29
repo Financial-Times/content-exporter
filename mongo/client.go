@@ -15,11 +15,12 @@ import (
 )
 
 type Client struct {
-	client                                   *mongo.Client
-	database                                 string
-	collection                               string
-	allowedContentTypes, allowedPublishUUIDs []string
-	log                                      *logger.UPPLogger
+	client              *mongo.Client
+	database            string
+	collection          string
+	allowedContentTypes []string
+	allowedPublishUUIDs []string
+	log                 *logger.UPPLogger
 }
 
 func NewClient(ctx context.Context, address, username, password, database, collection string, log *logger.UPPLogger) (*Client, error) {
