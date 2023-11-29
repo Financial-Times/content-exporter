@@ -16,9 +16,34 @@ const canBeDistributedYes = "yes"
 // uuidRegexp enables to check if a string matches a UUID
 var uuidRegexp = regexp.MustCompile("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}")
 
+type payload struct {
+	Deleted            bool     `json:"deleted,omitempty"`
+	CanBeDistributed   string   `json:"canBeDistributed,omitempty"`
+	Type               string   `json:"type"`
+	Publication        []string `json:"publication"`
+	FirstPublishedDate string   `json:"firstPublishedDate,omitempty"`
+	PublishedDate      string   `json:"publishedDate,omitempty"`
+}
+
+func (p payload) getDateOrDefault() string {
+	if p.FirstPublishedDate != "" {
+		if date := strings.Split(p.FirstPublishedDate, "T")[0]; date != "" {
+			return date
+		}
+	}
+
+	if p.PublishedDate != "" {
+		if date := strings.Split(p.PublishedDate, "T")[0]; date != "" {
+			return date
+		}
+	}
+
+	return content.DefaultDate
+}
+
 type event struct {
 	ContentURI string
-	Payload    interface{}
+	Payload    payload
 }
 
 func (e *event) toNotification(tid string) (*Notification, error) {
@@ -27,48 +52,18 @@ func (e *event) toNotification(tid string) (*Notification, error) {
 		return nil, fmt.Errorf("contentURI does not contain a UUID")
 	}
 
-	payload, ok := e.Payload.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid payload type: %T", e.Payload)
-	}
-
 	evType := UPDATE
-	if deleted, _ := payload["deleted"].(bool); deleted {
+	if e.Payload.Deleted {
 		evType = DELETE
-	}
-
-	var canBeDistributed *string
-	canBeDistributedValue, ok := payload["canBeDistributed"]
-	if ok {
-		canBeDistributed = new(string)
-		*canBeDistributed = canBeDistributedValue.(string)
-	}
-
-	contentType, _ := payload["type"].(string)
-
-	var publication []string
-	if _, ok = payload["publication"]; ok {
-		publicationInterface, ok := payload["publication"].([]interface{})
-		if !ok {
-			return nil, fmt.Errorf("failed to convert publication to array")
-		}
-
-		for _, v := range publicationInterface {
-			p, ok := v.(string)
-			if !ok {
-				return nil, fmt.Errorf("failed to convert publication to string")
-			}
-			publication = append(publication, p)
-		}
 	}
 
 	return &Notification{
 		Stub: content.Stub{
 			UUID:             uuid,
-			Date:             content.GetDateOrDefault(payload),
-			CanBeDistributed: canBeDistributed,
-			ContentType:      contentType,
-			Publication:      publication,
+			Date:             e.Payload.getDateOrDefault(),
+			CanBeDistributed: e.Payload.CanBeDistributed,
+			ContentType:      e.Payload.Type,
+			Publication:      e.Payload.Publication,
 		},
 		EvType:     evType,
 		Terminator: export.NewTerminator(),
@@ -162,7 +157,7 @@ func (m *MessageMapper) mapNotification(msg kafka.FTMessage) (*Notification, err
 		}
 	}
 
-	if notification.Stub.CanBeDistributed != nil && *notification.Stub.CanBeDistributed != canBeDistributedYes {
+	if notification.Stub.CanBeDistributed != "" && notification.Stub.CanBeDistributed != canBeDistributedYes {
 		return nil, newFilterError("cannot be distributed")
 	}
 

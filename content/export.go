@@ -9,7 +9,7 @@ const DefaultDate = "0000-00-00"
 
 type Stub struct {
 	UUID, Date, ContentType string
-	CanBeDistributed        *string
+	CanBeDistributed        string
 	Publication             []string
 }
 

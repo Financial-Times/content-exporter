@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func generateRequestBody(contentURI string, payload interface{}) string {
+func generateRequestBody(contentURI string, payload payload) string {
 	body, err := json.Marshal(event{
 		ContentURI: contentURI,
 		Payload:    payload,
@@ -38,7 +38,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedContentTypes: []string{"Audio", "Article", "LiveBlogPost", "LiveBlogPackage", "Content"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "SYNTH_REQ_MON1"},
-				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{}),
+				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{}),
 			},
 			error:                "content is not exportable: synthetic publication",
 			expectedNotification: nil,
@@ -58,7 +58,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedContentTypes: []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/audio/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{}),
+				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/audio/811e0591-5c71-4457-b8eb-8c22cf093117", payload{}),
 			},
 			error:                "content is not exportable: uri http://upp-content-validator.svc.ft.com/audio/811e0591-5c71-4457-b8eb-8c22cf093117 not allowed",
 			expectedNotification: nil,
@@ -68,28 +68,18 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedContentTypes: []string{"Audio", "Article", "LiveBlogPost", "LiveBlogPackage", "Content"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/invalidUUID", map[string]interface{}{}),
+				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/invalidUUID", payload{}),
 			},
 			expectedNotification: nil,
 			error:                "error building notification: contentURI does not contain a UUID",
-		},
-		{
-			name:                "invalid payload type will cause error",
-			allowedContentTypes: []string{"Audio", "Article", "LiveBlogPost", "LiveBlogPackage", "Content"},
-			msg: kafka.FTMessage{
-				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", []interface{}{"type", "Article"}),
-			},
-			expectedNotification: nil,
-			error:                "error building notification: invalid payload type: []interface {}",
 		},
 		{
 			name:                "non-article content type is processed properly",
 			allowedContentTypes: []string{"Audio", "Article", "LiveBlogPost", "LiveBlogPackage", "Content"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type": "LiveBlogPackage",
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
+					Type: "LiveBlogPackage",
 				}),
 			},
 			expectedNotification: &Notification{
@@ -106,8 +96,8 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedContentTypes: []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type": "LiveBlogPackage",
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
+					Type: "LiveBlogPackage",
 				}),
 			},
 			error:                "content is not exportable: type LiveBlogPackage not allowed",
@@ -118,7 +108,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedContentTypes: []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{}),
+				Body:    generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{}),
 			},
 			expectedNotification: nil,
 			error:                "content is not exportable: type  not allowed",
@@ -128,11 +118,11 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedContentTypes: []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type": 56,
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
+					Type: "56",
 				}),
 			},
-			error:                "content is not exportable: type  not allowed",
+			error:                "content is not exportable: type 56 not allowed",
 			expectedNotification: nil,
 		},
 		{
@@ -140,9 +130,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedContentTypes: []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type":             "Article",
-					"canBeDistributed": "no",
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
+					Type:             "Article",
+					CanBeDistributed: "no",
 				}),
 			},
 			error:                "content is not exportable: cannot be distributed",
@@ -153,9 +143,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedContentTypes: []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type":             "Article",
-					"canBeDistributed": "yes",
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
+					Type:             "Article",
+					CanBeDistributed: "yes",
 				}),
 			},
 			expectedNotification: &Notification{
@@ -164,7 +154,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Stub: content.Stub{
 					UUID:             "811e0591-5c71-4457-b8eb-8c22cf093117",
 					ContentType:      "Article",
-					CanBeDistributed: func(s string) *string { return &s }("yes"),
+					CanBeDistributed: "yes",
 				},
 			},
 		},
@@ -173,9 +163,9 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedContentTypes: []string{"Article"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type":    "Article",
-					"deleted": true,
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
+					Type:    "Article",
+					Deleted: true,
 				}),
 			},
 			expectedNotification: &Notification{
@@ -193,10 +183,10 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedPublishUUIDs: []string{"test1"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type":             "Article",
-					"canBeDistributed": "yes",
-					"publication":      []string{"test"},
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
+					Type:             "Article",
+					CanBeDistributed: "yes",
+					Publication:      []string{"test"},
 				}),
 			},
 			expectedNotification: nil,
@@ -208,10 +198,10 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedPublishUUIDs: []string{"test1"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type":             "Article",
-					"canBeDistributed": "yes",
-					"publication":      []string{"test1"},
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
+					Type:             "Article",
+					CanBeDistributed: "yes",
+					Publication:      []string{"test1"},
 				}),
 			},
 			expectedNotification: &Notification{
@@ -220,7 +210,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Stub: content.Stub{
 					UUID:             "811e0591-5c71-4457-b8eb-8c22cf093117",
 					ContentType:      "Article",
-					CanBeDistributed: func(s string) *string { return &s }("yes"),
+					CanBeDistributed: "yes",
 					Publication:      []string{"test1"},
 				},
 			},
@@ -231,10 +221,10 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 			allowedPublishUUIDs: []string{"test1"},
 			msg: kafka.FTMessage{
 				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", map[string]interface{}{
-					"type":             "Article",
-					"canBeDistributed": "yes",
-					"publication":      []string{"test1", "test"},
+				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
+					Type:             "Article",
+					CanBeDistributed: "yes",
+					Publication:      []string{"test1", "test"},
 				}),
 			},
 			expectedNotification: &Notification{
@@ -243,7 +233,7 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				Stub: content.Stub{
 					UUID:             "811e0591-5c71-4457-b8eb-8c22cf093117",
 					ContentType:      "Article",
-					CanBeDistributed: func(s string) *string { return &s }("yes"),
+					CanBeDistributed: "yes",
 					Publication:      []string{"test1", "test"},
 				},
 			},
