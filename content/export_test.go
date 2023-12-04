@@ -16,7 +16,7 @@ func TestExporterHandleContentWithValidContent(t *testing.T) {
 	updater := &mockUpdater{t: t, expectedUUID: stubUUID, expectedTid: tid, expectedDate: date, expectedPayload: testData}
 
 	exporter := NewExporter(fetcher, updater)
-	err := exporter.Export(tid, &Stub{stubUUID, date, "", nil})
+	err := exporter.Export(tid, &Stub{stubUUID, date, "", "", nil})
 
 	assert.NoError(t, err)
 	assert.True(t, fetcher.called)
@@ -32,7 +32,7 @@ func TestExporterHandleContentWithErrorFromFetcher(t *testing.T) {
 	updater := &mockUpdater{t: t}
 
 	exporter := NewExporter(fetcher, updater)
-	err := exporter.Export(tid, &Stub{stubUUID, date, "", nil})
+	err := exporter.Export(tid, &Stub{stubUUID, date, "", "", nil})
 
 	assert.Error(t, err)
 	assert.EqualError(t, err, "getting content: fetcher err")
@@ -49,7 +49,7 @@ func TestExporterHandleContentWithErrorFromUpdater(t *testing.T) {
 	updater := &mockUpdater{t: t, expectedUUID: stubUUID, expectedTid: tid, expectedDate: date, expectedPayload: testData, err: fmt.Errorf("updater err")}
 
 	exporter := NewExporter(fetcher, updater)
-	err := exporter.Export(tid, &Stub{stubUUID, date, "", nil})
+	err := exporter.Export(tid, &Stub{stubUUID, date, "", "", nil})
 
 	assert.Error(t, err)
 	assert.EqualError(t, err, "uploading content: updater err")

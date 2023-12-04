@@ -84,6 +84,6 @@ func mapStub(doc map[string]interface{}) (*content.Stub, error) {
 	return &content.Stub{
 		UUID:             docUUID.(string),
 		Date:             content.GetDateOrDefault(doc),
-		CanBeDistributed: nil,
+		CanBeDistributed: "",
 	}, nil
 }

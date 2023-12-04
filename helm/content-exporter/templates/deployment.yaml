@@ -48,6 +48,8 @@ spec:
           value: "{{ .Values.env.xPolicyHeaderValues }}"
         - name: ALLOWED_CONTENT_TYPES
           value: "{{ .Values.env.allowedContentTypes }}"
+        - name: ALLOWED_PUBLISH_UUIDS
+          value: "{{ .Values.env.allowedPublishUUIDs }}"
         - name: DB_NAME
           value: "{{ .Values.env.db.database }}"
         - name: DB_COLLECTION
