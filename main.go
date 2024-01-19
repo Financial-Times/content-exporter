@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Financial-Times/content-exporter/content"
+	"github.com/Financial-Times/content-exporter/ecsarchive"
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/content-exporter/mongo"
 	"github.com/Financial-Times/content-exporter/queue"
@@ -53,6 +55,18 @@ func main() {
 		Value:  "8080",
 		Desc:   "Port to listen on",
 		EnvVar: "APP_PORT",
+	})
+	ecsDbCred := app.String(cli.StringOpt{
+		Name:   "ecsDbCred",
+		Value:  "",
+		Desc:   "ECS credentials",
+		EnvVar: "ECS_DB_CRED",
+	})
+	ecsDbAddress := app.String(cli.StringOpt{
+		Name:   "ecsDbAddress",
+		Value:  "",
+		Desc:   "ECS DB Address",
+		EnvVar: "ECS_DB_ADDR",
 	})
 	dbAddress := app.String(cli.StringOpt{
 		Name:   "dbAddress",
@@ -108,6 +122,18 @@ func main() {
 		Value:  "http://localhost:8080/content/",
 		Desc:   "API URL to S3 writer endpoint",
 		EnvVar: "S3_WRITER_API_URL",
+	})
+	s3WriterGenericAPIURL := app.String(cli.StringOpt{
+		Name:   "s3WriterGenericAPIURL",
+		Value:  "http://localhost:8080/generic/",
+		Desc:   "API URL to S3 generic writer endpoint",
+		EnvVar: "S3_WRITER_GENERIC_API_URL",
+	})
+	s3PresignerAPIURL := app.String(cli.StringOpt{
+		Name:   "s3PresignerAPIURL",
+		Value:  "http://localhost:8080/presigner/",
+		Desc:   "API URL to S3 signer endpoint",
+		EnvVar: "S3_PRESIGNER_API_URL",
 	})
 	s3WriterHealthURL := app.String(cli.StringOpt{
 		Name:   "s3WriterHealthURL",
@@ -209,11 +235,28 @@ func main() {
 			log.WithError(err).Fatal("Error establishing database connection")
 		}
 
+		// Open DB Connection to ecs db
+		ecsDb, err := sql.Open(
+			"postgres",
+			fmt.Sprintf(
+				"postgres://%s@%s",
+				*ecsDbCred,
+				*ecsDbAddress,
+			),
+		)
+		defer func(ecsDb *sql.DB) {
+			if err = ecsDb.Close(); err != nil {
+				fmt.Printf("Failed to close database connection with :%e", err)
+			}
+		}(ecsDb)
+
 		apiClient := newAPIClient()
 		healthClient := newHealthClient()
 
 		fetcher := content.NewEnrichedContentFetcher(apiClient, healthClient, *enrichedContentAPIURL, *enrichedContentHealthURL, *xPolicyHeaderValues, *authorization)
-		uploader := content.NewS3Updater(apiClient, healthClient, *s3WriterAPIURL, *s3WriterHealthURL)
+		uploader := content.NewS3Updater(apiClient, healthClient, *s3WriterAPIURL, *s3WriterGenericAPIURL, *s3PresignerAPIURL, *s3WriterHealthURL)
+
+		ecsArchive := ecsarchive.NewECSAarchive(ecsDb, uploader)
 
 		exporter := content.NewExporter(fetcher, uploader)
 		fullExporter := export.NewFullExporter(20, exporter)
@@ -252,7 +295,7 @@ func main() {
 
 		hService := newHealthService(mongoClient, fetcher, uploader, kafkaListener, fullExporter)
 		inquirer := mongo.NewInquirer(mongoClient, log)
-		requestHandler := web.NewRequestHandler(fullExporter, inquirer, locker, *isIncExportEnabled, *contentRetrievalThrottle, log)
+		requestHandler := web.NewRequestHandler(fullExporter, inquirer, locker, *isIncExportEnabled, *contentRetrievalThrottle, log, ecsArchive)
 		go serveEndpoints(*appSystemCode, *appName, *port, log, requestHandler, hService)
 
 		log.
@@ -349,6 +392,7 @@ func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, 
 	servicesRouter.HandleFunc("/export", requestHandler.Export).Methods(http.MethodPost)
 	servicesRouter.HandleFunc("/jobs/{jobID}", requestHandler.GetJob).Methods(http.MethodGet)
 	servicesRouter.HandleFunc("/jobs", requestHandler.GetRunningJobs).Methods(http.MethodGet)
+	servicesRouter.HandleFunc("/ecsarchive/{startDate}/{endDate}", requestHandler.GenerateArticlesZipS3).Methods(http.MethodGet)
 
 	var monitoringRouter http.Handler = servicesRouter
 	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log, monitoringRouter)

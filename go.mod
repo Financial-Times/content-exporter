@@ -3,6 +3,7 @@ module github.com/Financial-Times/content-exporter
 go 1.21
 
 require (
+	github.com/Financial-Times/cm-body-transformer v1.1.0
 	github.com/Financial-Times/go-fthealth v0.0.0-20170525095041-e7ccca038327
 	github.com/Financial-Times/go-logger/v2 v2.0.1
 	github.com/Financial-Times/http-handlers-go v1.0.0
@@ -14,6 +15,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/jawher/mow.cli v0.0.0-20170802120632-82aefbee1e23
+	github.com/lib/pq v1.10.9
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/sethgrid/pester v0.0.0-20160429172022-8053687f9965
 	github.com/stretchr/testify v1.8.4
@@ -35,6 +37,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.14.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.18.2 // indirect
 	github.com/aws/smithy-go v1.13.5 // indirect
+	github.com/beevik/etree v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/eapache/go-resiliency v1.3.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230111030713-bf00bc1b83b6 // indirect
