@@ -13,6 +13,9 @@ import (
 	"syscall"
 	"time"
 
+	"net/http/pprof"
+	_ "net/http/pprof"
+
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/ecsarchive"
 	"github.com/Financial-Times/content-exporter/export"
@@ -393,6 +396,16 @@ func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, 
 	servicesRouter.HandleFunc("/jobs/{jobID}", requestHandler.GetJob).Methods(http.MethodGet)
 	servicesRouter.HandleFunc("/jobs", requestHandler.GetRunningJobs).Methods(http.MethodGet)
 	servicesRouter.HandleFunc("/ecsarchive/{startDate}/{endDate}", requestHandler.GenerateArticlesZipS3).Methods(http.MethodGet)
+
+	servicesRouter.HandleFunc("/debug/pprof/", pprof.Index)
+	servicesRouter.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	servicesRouter.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	servicesRouter.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+
+	servicesRouter.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+	servicesRouter.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+	servicesRouter.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+	servicesRouter.Handle("/debug/pprof/block", pprof.Handler("block"))
 
 	var monitoringRouter http.Handler = servicesRouter
 	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log, monitoringRouter)

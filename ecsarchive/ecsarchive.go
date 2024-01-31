@@ -147,12 +147,12 @@ func (ea *ECSArchive) ExportArticlesZip(articles <-chan Article, startDate, endD
 		}
 	}(writer)
 
-	encodedArticle := new(bytes.Buffer)
-	encoder := json.NewEncoder(encodedArticle)
-	encoder.SetEscapeHTML(false)
-
 	manifest_content := ""
 	for article := range articles {
+		encodedArticle := new(bytes.Buffer)
+		encoder := json.NewEncoder(encodedArticle)
+		encoder.SetEscapeHTML(false)
+
 		fileName := fmt.Sprintf(
 			"%s.json", article.UUID)
 		fileWriter, err := writer.Create(fileName)

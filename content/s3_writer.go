@@ -87,11 +87,11 @@ func (u *S3Updater) Upload(content []byte, tid, uuid, date string) error {
 
 func (u *S3Updater) UploadZip(buf *bytes.Buffer, key, tid string) error {
 	// Delete archive from memory after upload
-	defer buf.Reset()
 	req, err := http.NewRequest("PUT", u.writerGenericAPIURL+key, buf)
 	if err != nil {
 		return err
 	}
+	defer req.Body.Close()
 	req.Header.Add("User-Agent", "UPP Content Exporter")
 	req.Header.Add("Content-Type", "application/zip")
 	req.Header.Add("X-Request-Id", tid)
