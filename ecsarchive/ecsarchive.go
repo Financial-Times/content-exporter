@@ -12,12 +12,11 @@ import (
 
 	bodytransformer "github.com/Financial-Times/cm-body-transformer"
 	"github.com/Financial-Times/content-exporter/content"
-
-	_ "github.com/lib/pq"
+	"github.com/Financial-Times/go-logger/v2"
 )
 
 const (
-	MANIFEST_FILENAME = "manifest.txt"
+	ManifestFilename = "manifest.txt"
 )
 
 type Article struct {
@@ -34,21 +33,22 @@ type archive struct {
 	state      string
 	key        string
 	presignurl string
-	errors     error
 }
 
 type ECSArchive struct {
+	running  chan bool
 	mu       sync.Mutex
 	db       *sql.DB
 	updater  *content.S3Updater
 	archives map[string]archive
 }
 
-func NewECSAarchive(db *sql.DB, updater *content.S3Updater) *ECSArchive {
+func NewECSAarchive(db *sql.DB, updater *content.S3Updater, jobs int) *ECSArchive {
 	return &ECSArchive{
 		db:       db,
 		updater:  updater,
 		archives: make(map[string]archive),
+		running:  make(chan bool, jobs),
 	}
 }
 
@@ -74,7 +74,7 @@ func (ea *ECSArchive) OutputArchive(key string) (string, error) {
 	return fmt.Sprintf(`{"key": "%s", "state": "%s", "url":  "%s"}`, a.key, a.state, a.presignurl), nil
 }
 
-func (ea *ECSArchive) AddPresignUrlToArchive(key, url string) error {
+func (ea *ECSArchive) AddPresignURLToArchive(key, url string) error {
 	ea.mu.Lock()
 	defer ea.mu.Unlock()
 	a, prs := ea.archives[key]
@@ -104,55 +104,69 @@ func (ea *ECSArchive) DeleteArchive(key string) {
 	delete(ea.archives, key)
 }
 
-func (ea *ECSArchive) GenerateArchiveS3(startDate, endDate, tid string) error {
-	key := startDate + "-" + endDate + ".zip"
-	ea.CreateArchive(key)
+// Run in go routine
+func (ea *ECSArchive) GenerateArchiveS3(startDate, endDate, tid string, log *logger.LogEntry) {
+	ea.running <- true
+	defer func() {
+		<-ea.running
+	}()
 
-	articles, err := ea.getArticles(startDate, endDate)
-	if err != nil {
-		ea.DeleteArchive(key)
-		return err
+	key := startDate + "-" + endDate + ".zip"
+	if err := ea.CreateArchive(key); err != nil {
+		log.WithError(err).Warn("CreateArchive error.")
+		return
 	}
-	archive, err := ea.ExportArticlesZip(articles, startDate, endDate)
+
+	articles, errCh, err := ea.getArticles(startDate, endDate)
 	if err != nil {
 		ea.DeleteArchive(key)
-		return err
+		log.WithError(err).Warn("getArticles error.")
+		return
+	}
+	go reportErrors(errCh, log)
+	archive, err := ea.ExportArticlesZip(articles)
+	if err != nil {
+		ea.DeleteArchive(key)
+		log.WithError(err).Warn("ExportArticlesZip error.")
+		return
 	}
 
 	err = ea.updater.UploadZip(archive, key, tid)
 	if err != nil {
-		return err
+		log.WithError(err).Warn("UploadZip error.")
+		return
 	}
-	ea.ChangeArchiveState(key, "CREATED")
+
+	if err = ea.ChangeArchiveState(key, "CREATED"); err != nil {
+		log.WithError(err).Warn("ChangeArchiveState error.")
+		return
+	}
 
 	pu, err := ea.updater.PresignURL(key, tid)
 	if err != nil {
-		return err
+		log.WithError(err).Warn("PresignURL error.")
+		return
 	}
 
-	if err := ea.AddPresignUrlToArchive(key, pu.URL); err != nil {
-		return err
+	if err := ea.AddPresignURLToArchive(key, pu.URL); err != nil {
+		log.WithError(err).Warn("AddPresignURLToArchive error.")
+		return
 	}
 
-	return nil
+	PutBuffer(archive)
 }
 
-func (ea *ECSArchive) ExportArticlesZip(articles <-chan Article, startDate, endDate string) (*bytes.Buffer, error) {
-	buf := new(bytes.Buffer)
+func (ea *ECSArchive) ExportArticlesZip(articles <-chan Article) (*bytes.Buffer, error) {
+	buf := GetBuffer()
 	writer := zip.NewWriter(buf)
 
-	defer func(writer *zip.Writer) {
-		if err := writer.Close(); err != nil {
-			fmt.Printf("Failed to close writer with :%e", err)
-		}
-	}(writer)
+	encodedArticle := new(bytes.Buffer)
+	encoder := json.NewEncoder(encodedArticle)
+	encoder.SetEscapeHTML(false)
 
-	manifest_content := ""
+	manifestContent := ""
+
 	for article := range articles {
-		encodedArticle := new(bytes.Buffer)
-		encoder := json.NewEncoder(encodedArticle)
-		encoder.SetEscapeHTML(false)
-
 		fileName := fmt.Sprintf(
 			"%s.json", article.UUID)
 		fileWriter, err := writer.Create(fileName)
@@ -168,55 +182,63 @@ func (ea *ECSArchive) ExportArticlesZip(articles <-chan Article, startDate, endD
 			return nil, err
 		}
 
-		manifest_content += (fileName + "\n")
+		manifestContent += (fileName + "\n")
 	}
-	manifestWriter, err := writer.Create(MANIFEST_FILENAME)
+
+	manifestWriter, err := writer.Create(ManifestFilename)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = manifestWriter.Write([]byte(manifest_content)); err != nil {
+	if _, err = manifestWriter.Write([]byte(manifestContent)); err != nil {
 		return nil, err
 	}
+
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+
 	return buf, nil
 }
 
-func (ea *ECSArchive) getArticles(startDate, endDate string) (chan Article, error) {
+func (ea *ECSArchive) getArticles(startDate, endDate string) (chan Article, chan error, error) {
 	dateRegex, err := regexp.Compile(`\d{4}-\d{2}-\d{2}`)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
 	if !dateRegex.MatchString(startDate) || !dateRegex.MatchString(endDate) {
-		return nil, fmt.Errorf("dates must be in format yyyy-mm-dd")
+		return nil, nil, fmt.Errorf("dates must be in format yyyy-mm-dd")
 	}
 
 	if err = ea.db.Ping(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	rows, err := ea.db.Query(QUERY, endDate, startDate)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	ch := make(chan Article, 10)
-	go iterateRows(rows, ch)
-	return ch, nil
+	errCh := make(chan error)
+	go iterateRows(rows, ch, errCh)
+	return ch, errCh, nil
 }
 
-func iterateRows(rows *sql.Rows, ch chan<- Article) {
+func iterateRows(rows *sql.Rows, ch chan<- Article, errCh chan<- error) {
 	for rows.Next() {
 		article := &Article{
 			Language: "en",
 		}
 		if err := rows.Scan(&article.UUID, &article.Body, &article.CanonicalURL, &article.DateCreated, &article.DateModified, &article.Authors); err != nil {
-			fmt.Println("Failed to scan article with:")
-			//panic(err)
+			errCh <- fmt.Errorf("failied to scan article with: %w", err)
+			break
 		}
 
 		transformedBody, err := bodytransformer.TransformBody(article.Body)
 		if err != nil {
-			fmt.Printf("Failed to transform body with:")
-			//panic(err)
+			errCh <- fmt.Errorf("failed to transform body with: %w", err)
+			break
 		}
 		article.Body = transformedBody
 
@@ -228,8 +250,15 @@ func iterateRows(rows *sql.Rows, ch chan<- Article) {
 		ch <- *article
 	}
 	if err := rows.Err(); err != nil {
-		//panic(err)
+		errCh <- err
 	}
 	rows.Close()
 	close(ch)
+	close(errCh)
+}
+
+func reportErrors(errCh <-chan error, log *logger.LogEntry) {
+	for err := range errCh {
+		log.WithError(err).Warn("Error in iterateRows.")
+	}
 }

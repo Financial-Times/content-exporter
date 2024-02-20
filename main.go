@@ -13,9 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"net/http/pprof"
-	_ "net/http/pprof"
-
 	"github.com/Financial-Times/content-exporter/content"
 	"github.com/Financial-Times/content-exporter/ecsarchive"
 	"github.com/Financial-Times/content-exporter/export"
@@ -31,6 +28,8 @@ import (
 	cli "github.com/jawher/mow.cli"
 	"github.com/rcrowley/go-metrics"
 	"github.com/sethgrid/pester"
+
+	_ "github.com/lib/pq"
 )
 
 const (
@@ -59,14 +58,14 @@ func main() {
 		Desc:   "Port to listen on",
 		EnvVar: "APP_PORT",
 	})
-	ecsDbCred := app.String(cli.StringOpt{
-		Name:   "ecsDbCred",
+	ecsDBCred := app.String(cli.StringOpt{
+		Name:   "ecsDBCred",
 		Value:  "",
 		Desc:   "ECS credentials",
 		EnvVar: "ECS_DB_CRED",
 	})
-	ecsDbAddress := app.String(cli.StringOpt{
-		Name:   "ecsDbAddress",
+	ecsDBAddress := app.String(cli.StringOpt{
+		Name:   "ecsDBAddress",
 		Value:  "",
 		Desc:   "ECS DB Address",
 		EnvVar: "ECS_DB_ADDR",
@@ -175,6 +174,14 @@ func main() {
 		Desc:   "Delay in seconds for notifications to being handled",
 		EnvVar: "DELAY_FOR_NOTIFICATION",
 	})
+
+	rangeInHours := app.Int(cli.IntOpt{
+		Name:   "rangeInHours",
+		Value:  2920,
+		Desc:   "Restrict asking range for ECS Archive",
+		EnvVar: "RANGE_IN_HOURS",
+	})
+
 	contentRetrievalThrottle := app.Int(cli.IntOpt{
 		Name:   "contentRetrievalThrottle",
 		Value:  0,
@@ -239,19 +246,19 @@ func main() {
 		}
 
 		// Open DB Connection to ecs db
-		ecsDb, err := sql.Open(
+		ecsDB, err := sql.Open(
 			"postgres",
 			fmt.Sprintf(
 				"postgres://%s@%s",
-				*ecsDbCred,
-				*ecsDbAddress,
+				*ecsDBCred,
+				*ecsDBAddress,
 			),
 		)
-		defer func(ecsDb *sql.DB) {
-			if err = ecsDb.Close(); err != nil {
-				fmt.Printf("Failed to close database connection with :%e", err)
+		defer func(ecsDB *sql.DB) {
+			if err = ecsDB.Close(); err != nil {
+				log.WithError(err).Fatalf("Failed to close database connection with :%e", err)
 			}
-		}(ecsDb)
+		}(ecsDB)
 
 		apiClient := newAPIClient()
 		healthClient := newHealthClient()
@@ -259,7 +266,7 @@ func main() {
 		fetcher := content.NewEnrichedContentFetcher(apiClient, healthClient, *enrichedContentAPIURL, *enrichedContentHealthURL, *xPolicyHeaderValues, *authorization)
 		uploader := content.NewS3Updater(apiClient, healthClient, *s3WriterAPIURL, *s3WriterGenericAPIURL, *s3PresignerAPIURL, *s3WriterHealthURL)
 
-		ecsArchive := ecsarchive.NewECSAarchive(ecsDb, uploader)
+		ecsArchive := ecsarchive.NewECSAarchive(ecsDB, uploader, 1)
 
 		exporter := content.NewExporter(fetcher, uploader)
 		fullExporter := export.NewFullExporter(20, exporter)
@@ -298,7 +305,7 @@ func main() {
 
 		hService := newHealthService(mongoClient, fetcher, uploader, kafkaListener, fullExporter)
 		inquirer := mongo.NewInquirer(mongoClient, log)
-		requestHandler := web.NewRequestHandler(fullExporter, inquirer, locker, *isIncExportEnabled, *contentRetrievalThrottle, log, ecsArchive)
+		requestHandler := web.NewRequestHandler(fullExporter, inquirer, locker, *isIncExportEnabled, *contentRetrievalThrottle, log, ecsArchive, *rangeInHours)
 		go serveEndpoints(*appSystemCode, *appName, *port, log, requestHandler, hService)
 
 		log.
@@ -396,16 +403,6 @@ func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, 
 	servicesRouter.HandleFunc("/jobs/{jobID}", requestHandler.GetJob).Methods(http.MethodGet)
 	servicesRouter.HandleFunc("/jobs", requestHandler.GetRunningJobs).Methods(http.MethodGet)
 	servicesRouter.HandleFunc("/ecsarchive/{startDate}/{endDate}", requestHandler.GenerateArticlesZipS3).Methods(http.MethodGet)
-
-	servicesRouter.HandleFunc("/debug/pprof/", pprof.Index)
-	servicesRouter.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	servicesRouter.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	servicesRouter.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-
-	servicesRouter.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-	servicesRouter.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-	servicesRouter.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
-	servicesRouter.Handle("/debug/pprof/block", pprof.Handler("block"))
 
 	var monitoringRouter http.Handler = servicesRouter
 	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log, monitoringRouter)
