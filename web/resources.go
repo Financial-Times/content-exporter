@@ -91,6 +91,7 @@ func (h *RequestHandler) GenerateArticlesZipS3(w http.ResponseWriter, r *http.Re
 	}
 
 	key := startDate.Format(dateFormat) + "-" + endDate.Format(dateFormat) + ".zip"
+	// We expect OutputArchive to return error (archive does not exist) in order to proceed
 	output, err := h.ea.OutputArchive(key)
 	if err == nil {
 		w.WriteHeader(http.StatusOK)

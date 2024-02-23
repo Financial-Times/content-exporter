@@ -64,6 +64,9 @@ func (ea *ECSArchive) CreateArchive(key string) error {
 	return nil
 }
 
+// Check the status of the archive
+// IN PROGRESS or DONE
+// We return error to indicate the archive does not exist
 func (ea *ECSArchive) OutputArchive(key string) (string, error) {
 	ea.mu.Lock()
 	defer ea.mu.Unlock()
