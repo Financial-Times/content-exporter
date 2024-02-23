@@ -40,6 +40,10 @@ spec:
           value: "{{ .Values.env.enrichedContent.baseUrl }}/{{ .Values.env.enrichedContent.apiPath }}/"
         - name: ENRICHED_CONTENT_HEALTH_URL
           value: "{{ .Values.env.enrichedContent.baseUrl }}/__gtg"
+        - name: S3_WRITER_GENERIC_API_URL
+          value: "{{ .Values.env.s3Writer.baseUrl }}/{{ .Values.env.s3Writer.apiGenericPath }}/"
+        - name: S3_PRESIGNER_API_URL
+          value: "{{ .Values.env.s3Writer.baseUrl }}/{{ .Values.env.s3Writer.apiPresignerPath }}/"
         - name: S3_WRITER_API_URL
           value: "{{ .Values.env.s3Writer.baseUrl }}/{{ .Values.env.s3Writer.apiPath }}/"
         - name: S3_WRITER_HEALTH_URL
@@ -54,6 +58,16 @@ spec:
           value: "{{ .Values.env.db.database }}"
         - name: DB_COLLECTION
           value: "{{ .Values.env.db.collection }}"
+        - name: ECS_DB_ADDR
+          valueFrom:
+            configMapKeyRef:
+              name: global-config
+              key: aws.rds.enriched-content-store.address
+        - name: ECS_DB_CRED
+          valueFrom:
+            secretKeyRef:
+              name: doppler-global-secrets
+              key: ENRICHED_CONT_RW_PG_RDSCREDENTIALS
         - name: DB_CLUSTER_ADDRESS
           valueFrom:
             configMapKeyRef:

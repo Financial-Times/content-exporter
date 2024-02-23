@@ -190,7 +190,7 @@ func TestRequestHandler_Export(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			h := NewRequestHandler(test.exporter, test.inquirer, test.locker, test.incExportEnabled, test.throttle, log)
+			h := NewRequestHandler(test.exporter, test.inquirer, test.locker, test.incExportEnabled, test.throttle, log, nil, 0)
 			rr := httptest.NewRecorder()
 			r := mux.NewRouter()
 			req := test.getHTTPRequest()

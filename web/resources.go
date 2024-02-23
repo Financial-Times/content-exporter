@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Financial-Times/content-exporter/content"
+	"github.com/Financial-Times/content-exporter/ecsarchive"
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/go-logger/v2"
 	transactionidutils "github.com/Financial-Times/transactionid-utils-go"
@@ -20,6 +21,7 @@ import (
 const (
 	targetedExportTimeout = 30 * time.Second
 	fullExportTimeout     = 120 * time.Second
+	dateFormat            = "2006-01-02"
 )
 
 type exporter interface {
@@ -41,9 +43,11 @@ type RequestHandler struct {
 	locker                   *export.Locker
 	isIncExportEnabled       bool
 	log                      *logger.UPPLogger
+	ea                       *ecsarchive.ECSArchive
+	rangeInHours             int
 }
 
-func NewRequestHandler(fullExporter exporter, inquirer inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int, log *logger.UPPLogger) *RequestHandler {
+func NewRequestHandler(fullExporter exporter, inquirer inquirer, locker *export.Locker, isIncExportEnabled bool, contentRetrievalThrottle int, log *logger.UPPLogger, ea *ecsarchive.ECSArchive, rangeInHours int) *RequestHandler {
 	return &RequestHandler{
 		fullExporter:             fullExporter,
 		inquirer:                 inquirer,
@@ -51,7 +55,56 @@ func NewRequestHandler(fullExporter exporter, inquirer inquirer, locker *export.
 		isIncExportEnabled:       isIncExportEnabled,
 		contentRetrievalThrottle: contentRetrievalThrottle,
 		log:                      log,
+		ea:                       ea,
+		rangeInHours:             rangeInHours,
 	}
+}
+
+func (h *RequestHandler) GenerateArticlesZipS3(w http.ResponseWriter, r *http.Request) {
+	tid := transactionidutils.GetTransactionIDFromRequest(r)
+	log := h.log.WithTransactionID(tid)
+	vars := mux.Vars(r)
+	startDate, err := time.Parse(dateFormat, vars["startDate"])
+	if err != nil {
+		log.WithError(err).Warn("Bad date format.")
+		h.sendErrorResponse(w, http.StatusBadRequest, "Bad date format. Should be 2024-01-17.")
+		return
+	}
+
+	endDate, err := time.Parse(dateFormat, vars["endDate"])
+	if err != nil {
+		log.WithError(err).Warn("Bad date format.")
+		h.sendErrorResponse(w, http.StatusBadRequest, "Bad date format. Should be 2024-01-17.")
+		return
+	}
+
+	if startDate.Compare(endDate) > 0 {
+		log.Warn("startDate is equal or after endDate")
+		h.sendErrorResponse(w, http.StatusBadRequest, "Your starting date is in the future.")
+		return
+	}
+
+	if endDate.Sub(startDate).Hours() > float64(h.rangeInHours) {
+		log.Warn("range too big")
+		h.sendErrorResponse(w, http.StatusBadRequest, "Try decrease asking range.")
+		return
+	}
+
+	key := startDate.Format(dateFormat) + "-" + endDate.Format(dateFormat) + ".zip"
+	// We expect OutputArchive to return error (archive does not exist) in order to proceed
+	output, err := h.ea.OutputArchive(key)
+	if err == nil {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "%s", output)
+		w.Header().Set("Content-Type", "application/json")
+		return
+	}
+
+	log.Infof("Start creating the archive... %s %s", startDate, endDate)
+	go h.ea.GenerateArchiveS3(startDate.Format(dateFormat), endDate.Format(dateFormat), tid, log)
+
+	w.Header().Add("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (h *RequestHandler) Export(w http.ResponseWriter, r *http.Request) {

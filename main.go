@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Financial-Times/content-exporter/content"
+	"github.com/Financial-Times/content-exporter/ecsarchive"
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/content-exporter/mongo"
 	"github.com/Financial-Times/content-exporter/queue"
@@ -26,6 +28,8 @@ import (
 	cli "github.com/jawher/mow.cli"
 	"github.com/rcrowley/go-metrics"
 	"github.com/sethgrid/pester"
+
+	_ "github.com/lib/pq"
 )
 
 const (
@@ -53,6 +57,18 @@ func main() {
 		Value:  "8080",
 		Desc:   "Port to listen on",
 		EnvVar: "APP_PORT",
+	})
+	ecsDBCred := app.String(cli.StringOpt{
+		Name:   "ecsDBCred",
+		Value:  "",
+		Desc:   "ECS credentials",
+		EnvVar: "ECS_DB_CRED",
+	})
+	ecsDBAddress := app.String(cli.StringOpt{
+		Name:   "ecsDBAddress",
+		Value:  "",
+		Desc:   "ECS DB Address",
+		EnvVar: "ECS_DB_ADDR",
 	})
 	dbAddress := app.String(cli.StringOpt{
 		Name:   "dbAddress",
@@ -109,6 +125,18 @@ func main() {
 		Desc:   "API URL to S3 writer endpoint",
 		EnvVar: "S3_WRITER_API_URL",
 	})
+	s3WriterGenericAPIURL := app.String(cli.StringOpt{
+		Name:   "s3WriterGenericAPIURL",
+		Value:  "http://localhost:8080/generic/",
+		Desc:   "API URL to S3 generic writer endpoint",
+		EnvVar: "S3_WRITER_GENERIC_API_URL",
+	})
+	s3PresignerAPIURL := app.String(cli.StringOpt{
+		Name:   "s3PresignerAPIURL",
+		Value:  "http://localhost:8080/presigner/",
+		Desc:   "API URL to S3 signer endpoint",
+		EnvVar: "S3_PRESIGNER_API_URL",
+	})
 	s3WriterHealthURL := app.String(cli.StringOpt{
 		Name:   "s3WriterHealthURL",
 		Value:  "http://localhost:8080/__gtg",
@@ -146,6 +174,14 @@ func main() {
 		Desc:   "Delay in seconds for notifications to being handled",
 		EnvVar: "DELAY_FOR_NOTIFICATION",
 	})
+
+	rangeInHours := app.Int(cli.IntOpt{
+		Name:   "rangeInHours",
+		Value:  2920,
+		Desc:   "Restrict asking range for ECS Archive",
+		EnvVar: "RANGE_IN_HOURS",
+	})
+
 	contentRetrievalThrottle := app.Int(cli.IntOpt{
 		Name:   "contentRetrievalThrottle",
 		Value:  0,
@@ -209,11 +245,28 @@ func main() {
 			log.WithError(err).Fatal("Error establishing database connection")
 		}
 
+		// Open DB Connection to ecs db
+		ecsDB, err := sql.Open(
+			"postgres",
+			fmt.Sprintf(
+				"postgres://%s@%s",
+				*ecsDBCred,
+				*ecsDBAddress,
+			),
+		)
+		defer func(ecsDB *sql.DB) {
+			if err = ecsDB.Close(); err != nil {
+				log.WithError(err).Fatalf("Failed to close database connection with :%e", err)
+			}
+		}(ecsDB)
+
 		apiClient := newAPIClient()
 		healthClient := newHealthClient()
 
 		fetcher := content.NewEnrichedContentFetcher(apiClient, healthClient, *enrichedContentAPIURL, *enrichedContentHealthURL, *xPolicyHeaderValues, *authorization)
-		uploader := content.NewS3Updater(apiClient, healthClient, *s3WriterAPIURL, *s3WriterHealthURL)
+		uploader := content.NewS3Updater(apiClient, healthClient, *s3WriterAPIURL, *s3WriterGenericAPIURL, *s3PresignerAPIURL, *s3WriterHealthURL)
+
+		ecsArchive := ecsarchive.NewECSAarchive(ecsDB, uploader, 1)
 
 		exporter := content.NewExporter(fetcher, uploader)
 		fullExporter := export.NewFullExporter(20, exporter)
@@ -252,7 +305,7 @@ func main() {
 
 		hService := newHealthService(mongoClient, fetcher, uploader, kafkaListener, fullExporter)
 		inquirer := mongo.NewInquirer(mongoClient, log)
-		requestHandler := web.NewRequestHandler(fullExporter, inquirer, locker, *isIncExportEnabled, *contentRetrievalThrottle, log)
+		requestHandler := web.NewRequestHandler(fullExporter, inquirer, locker, *isIncExportEnabled, *contentRetrievalThrottle, log, ecsArchive, *rangeInHours)
 		go serveEndpoints(*appSystemCode, *appName, *port, log, requestHandler, hService)
 
 		log.
@@ -349,6 +402,7 @@ func serveEndpoints(appSystemCode, appName, port string, log *logger.UPPLogger, 
 	servicesRouter.HandleFunc("/export", requestHandler.Export).Methods(http.MethodPost)
 	servicesRouter.HandleFunc("/jobs/{jobID}", requestHandler.GetJob).Methods(http.MethodGet)
 	servicesRouter.HandleFunc("/jobs", requestHandler.GetRunningJobs).Methods(http.MethodGet)
+	servicesRouter.HandleFunc("/ecsarchive/{startDate}/{endDate}", requestHandler.GenerateArticlesZipS3).Methods(http.MethodGet)
 
 	var monitoringRouter http.Handler = servicesRouter
 	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log, monitoringRouter)

@@ -252,5 +252,5 @@ func TestS3UpdaterCheckHealthErrorOnRequestDo(t *testing.T) {
 
 func newS3Updater(writerAPIUrl string) *S3Updater {
 	client := &http.Client{}
-	return NewS3Updater(client, client, writerAPIUrl, writerAPIUrl+"/__gtg")
+	return NewS3Updater(client, client, writerAPIUrl, "", "", writerAPIUrl+"/__gtg")
 }

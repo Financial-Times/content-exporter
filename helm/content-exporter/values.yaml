@@ -30,6 +30,8 @@ env:
   s3Writer:
     baseUrl: "http://upp-exports-rw-s3:8080"
     apiPath: "content"
+    apiGenericPath: "generic"    
+    apiPresignerPath: "presign"
   contentOriginAllowlist: "^http://upp-content-validator\\.svc\\.ft\\.com(:\\d{2,5})?/content/[\\w-]+.*$"
   allowedContentTypes: "Article"
   allowedPublishUUIDs: "88fdde6c-2aa4-4f78-af02-9f680097cfd6"

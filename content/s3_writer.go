@@ -2,9 +2,14 @@ package content
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
+
+type Presignurl struct {
+	URL string `json:"url"`
+}
 
 type updater interface {
 	Upload(content []byte, tid, uuid, date string) error
@@ -12,18 +17,22 @@ type updater interface {
 }
 
 type S3Updater struct {
-	apiClient       httpClient
-	healthClient    httpClient
-	writerAPIURL    string
-	writerHealthURL string
+	apiClient           httpClient
+	healthClient        httpClient
+	writerAPIURL        string
+	writerGenericAPIURL string
+	presignerAPIURL     string
+	writerHealthURL     string
 }
 
-func NewS3Updater(apiClient, healthClient httpClient, writerAPIURL string, writerHealthURL string) *S3Updater {
+func NewS3Updater(apiClient, healthClient httpClient, writerAPIURL, writerGenericAPIURL, presignerAPIURL, writerHealthURL string) *S3Updater {
 	return &S3Updater{
-		apiClient:       apiClient,
-		healthClient:    healthClient,
-		writerAPIURL:    writerAPIURL,
-		writerHealthURL: writerHealthURL,
+		apiClient:           apiClient,
+		healthClient:        healthClient,
+		writerAPIURL:        writerAPIURL,
+		writerGenericAPIURL: writerGenericAPIURL,
+		presignerAPIURL:     presignerAPIURL,
+		writerHealthURL:     writerHealthURL,
 	}
 }
 
@@ -74,6 +83,49 @@ func (u *S3Updater) Upload(content []byte, tid, uuid, date string) error {
 	}
 
 	return nil
+}
+
+func (u *S3Updater) UploadZip(buf *bytes.Buffer, key, tid string) error {
+	req, err := http.NewRequest("PUT", u.writerGenericAPIURL+key, buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Add("User-Agent", "UPP Content Exporter")
+	req.Header.Add("Content-Type", "application/zip")
+	req.Header.Add("X-Request-Id", tid)
+
+	resp, err := u.apiClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if !(resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated) {
+		return fmt.Errorf("uploading zip file failed with unexpected status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (u *S3Updater) PresignURL(key, tid string) (*Presignurl, error) {
+	var p Presignurl
+	req, err := http.NewRequest("GET", u.presignerAPIURL+key, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("User-Agent", "UPP Content Exporter")
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("X-Request-Id", tid)
+	resp, err := u.apiClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	err = json.NewDecoder(resp.Body).Decode(&p)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
 func (u *S3Updater) CheckHealth() (string, error) {
