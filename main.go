@@ -17,12 +17,14 @@ import (
 	"github.com/Financial-Times/content-exporter/ecsarchive"
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/content-exporter/mongo"
+	"github.com/Financial-Times/content-exporter/policy"
 	"github.com/Financial-Times/content-exporter/queue"
 	"github.com/Financial-Times/content-exporter/web"
 	health "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	"github.com/Financial-Times/kafka-client-go/v4"
+	"github.com/Financial-Times/opa-client-go"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
 	"github.com/gorilla/mux"
 	cli "github.com/jawher/mow.cli"
@@ -228,6 +230,18 @@ func main() {
 		Desc:   `Comma-separated list of UUIDs`,
 		EnvVar: "ALLOWED_PUBLISH_UUIDS",
 	})
+	opaURL := app.String(cli.StringOpt{
+		Name:   "opaURL",
+		Desc:   "Open Policy Agent sidecar address",
+		Value:  "http://localhost:8181",
+		EnvVar: "OPA_URL",
+	})
+	filterSVPolicyPath := app.String(cli.StringOpt{
+		Name:   "filterSVPolicyPath",
+		Desc:   "The path to the OPA module in OPA module",
+		Value:  "content_rw_elasticsearch/content_msg_evaluator",
+		EnvVar: "FILTER_SV_POLICY_PATH",
+	})
 
 	log := logger.NewUPPLogger(serviceName, *logLevel)
 
@@ -291,6 +305,8 @@ func main() {
 				maxGoRoutines,
 				*kafkaClusterArn,
 				*allowedPublishUUIDs,
+				*opaURL,
+				*filterSVPolicyPath,
 			)
 
 			if err != nil {
@@ -367,6 +383,8 @@ func prepareIncrementalExport(
 	maxGoRoutines *int,
 	kafkaClusterArn string,
 	allowedPublishUUIDs []string,
+	opaURL string,
+	filterSVPolicyPath string,
 ) (*queue.Listener, error) {
 	config := kafka.ConsumerConfig{
 		ClusterArn:              &kafkaClusterArn,
@@ -385,7 +403,15 @@ func prepareIncrementalExport(
 
 	messageHandler := queue.NewNotificationHandler(exporter, *delayForNotification)
 	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes, allowedPublishUUIDs)
-	listener := queue.NewListener(messageConsumer, messageHandler, messageMapper, locker, *maxGoRoutines, log)
+
+	paths := map[string]string{
+		policy.FilterSVContent: filterSVPolicyPath,
+	}
+
+	opaClient := opa.NewOpenPolicyAgentClient(opaURL, paths, opa.WithLogger(log))
+	opaAgent := policy.NewOpenPolicyAgent(opaClient, log)
+
+	listener := queue.NewListener(messageConsumer, messageHandler, messageMapper, opaAgent, locker, *maxGoRoutines, log)
 
 	return listener, nil
 }
