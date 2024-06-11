@@ -41,5 +41,5 @@ env:
   contentRetrievalThrottle: 500
   opa:
     url: "http://localhost:8181"
-    policyPath: "enriched_content_rw_postgres/content_msg_evaluator"
+    policyPath: "content-exporter/content_msg_evaluator"
 
