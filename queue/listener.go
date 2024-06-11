@@ -152,8 +152,6 @@ func (l *Listener) handleMessage(msg kafka.FTMessage) {
 		return
 	}
 
-	log.WithField("publications", n.Stub.Publication).Info("publications")
-
 	input := map[string]interface{}{
 		"payload": map[string]interface{}{
 			"publication": n.Stub.Publication,

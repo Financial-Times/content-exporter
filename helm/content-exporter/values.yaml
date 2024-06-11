@@ -41,5 +41,5 @@ env:
   contentRetrievalThrottle: 500
   opa:
     url: "http://localhost:8181"
-    policyPath: "content-exporter/content_msg_evaluator"
+    policyPath: "content_exporter/content_msg_evaluator"
 
