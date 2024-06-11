@@ -236,11 +236,11 @@ func main() {
 		Value:  "http://localhost:8181",
 		EnvVar: "OPA_URL",
 	})
-	filterSVPolicyPath := app.String(cli.StringOpt{
-		Name:   "filterSVPolicyPath",
+	opaPolicyPath := app.String(cli.StringOpt{
+		Name:   "opaPolicyPath",
 		Desc:   "The path to the OPA module in OPA module",
-		Value:  "content_rw_elasticsearch/content_msg_evaluator",
-		EnvVar: "FILTER_SV_POLICY_PATH",
+		Value:  "content-exporter/content_msg_evaluator",
+		EnvVar: "OPA_POLICY_PATH",
 	})
 
 	log := logger.NewUPPLogger(serviceName, *logLevel)
@@ -306,7 +306,7 @@ func main() {
 				*kafkaClusterArn,
 				*allowedPublishUUIDs,
 				*opaURL,
-				*filterSVPolicyPath,
+				*opaPolicyPath,
 			)
 
 			if err != nil {
@@ -384,7 +384,7 @@ func prepareIncrementalExport(
 	kafkaClusterArn string,
 	allowedPublishUUIDs []string,
 	opaURL string,
-	filterSVPolicyPath string,
+	opaPolicyPath string,
 ) (*queue.Listener, error) {
 	config := kafka.ConsumerConfig{
 		ClusterArn:              &kafkaClusterArn,
@@ -405,7 +405,7 @@ func prepareIncrementalExport(
 	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes, allowedPublishUUIDs)
 
 	paths := map[string]string{
-		policy.FilterSVContent: filterSVPolicyPath,
+		policy.FilterSVContent: opaPolicyPath,
 	}
 
 	opaClient := opa.NewOpenPolicyAgentClient(opaURL, paths, opa.WithLogger(log))
