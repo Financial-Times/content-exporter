@@ -213,16 +213,16 @@ func main() {
 		Desc:   "Maximum goroutines to allocate for kafka message handling",
 		EnvVar: "MAX_GO_ROUTINES",
 	})
+	kafkaClusterArn := app.String(cli.StringOpt{
+		Name:   "kafkaClusterArn",
+		Desc:   "Kafka cluster ARN",
+		EnvVar: "KAFKA_CLUSTER_ARN",
+	})
 	allowedContentTypes := app.Strings(cli.StringsOpt{
 		Name:   "allowed-content-types",
 		Value:  []string{},
 		Desc:   `Comma-separated list of ContentTypes`,
 		EnvVar: "ALLOWED_CONTENT_TYPES",
-	})
-	kafkaClusterArn := app.String(cli.StringOpt{
-		Name:   "kafkaClusterArn",
-		Desc:   "Kafka cluster ARN",
-		EnvVar: "KAFKA_CLUSTER_ARN",
 	})
 	allowedPublishUUIDs := app.Strings(cli.StringsOpt{
 		Name:   "allowedPublishUUIDs",
@@ -254,7 +254,17 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		mongoClient, err := mongo.NewClient(ctx, *dbAddress, *dbUsername, *dbPassword, *dbName, *dbCollection, log)
+		mongoClient, err := mongo.NewClient(
+			ctx,
+			*dbAddress,
+			*dbUsername,
+			*dbPassword,
+			*dbName,
+			*dbCollection,
+			*allowedContentTypes,
+			*allowedPublishUUIDs,
+			log,
+		)
 		if err != nil {
 			log.WithError(err).Fatal("Error establishing database connection")
 		}
@@ -304,7 +314,6 @@ func main() {
 				locker,
 				maxGoRoutines,
 				*kafkaClusterArn,
-				*allowedPublishUUIDs,
 				*opaURL,
 				*opaPolicyPath,
 			)
@@ -382,7 +391,6 @@ func prepareIncrementalExport(
 	locker *export.Locker,
 	maxGoRoutines *int,
 	kafkaClusterArn string,
-	allowedPublishUUIDs []string,
 	opaURL string,
 	opaPolicyPath string,
 ) (*queue.Listener, error) {
@@ -402,7 +410,7 @@ func prepareIncrementalExport(
 	contentOriginAllowListRegex := regexp.MustCompile(*contentOriginAllowlist)
 
 	messageHandler := queue.NewNotificationHandler(exporter, *delayForNotification)
-	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes, allowedPublishUUIDs)
+	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
 
 	paths := map[string]string{
 		policy.FilterSVContent: opaPolicyPath,
