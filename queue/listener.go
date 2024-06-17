@@ -5,9 +5,14 @@ import (
 	"time"
 
 	"github.com/Financial-Times/content-exporter/export"
+	"github.com/Financial-Times/content-exporter/policy"
 	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/kafka-client-go/v4"
 )
+
+type Agent interface {
+	EvaluateContentPolicy(q map[string]interface{}) (*policy.ContentPolicyResult, error)
+}
 
 type Listener struct {
 	messageConsumer *kafka.Consumer
@@ -19,6 +24,7 @@ type Listener struct {
 	pending             map[string]*Notification
 	notificationHandler *NotificationHandler
 	messageMapper       *MessageMapper
+	policyEvaluator     Agent
 	workers             chan struct{}
 	log                 *logger.UPPLogger
 }
@@ -27,6 +33,7 @@ func NewListener(
 	messageConsumer *kafka.Consumer,
 	notificationHandler *NotificationHandler,
 	messageMapper *MessageMapper,
+	policyEvaluator Agent,
 	locker *export.Locker,
 	maxGoRoutines int,
 	log *logger.UPPLogger,
@@ -39,6 +46,7 @@ func NewListener(
 		terminator:          export.NewTerminator(),
 		notificationHandler: notificationHandler,
 		messageMapper:       messageMapper,
+		policyEvaluator:     policyEvaluator,
 		workers:             make(chan struct{}, maxGoRoutines),
 		log:                 log,
 	}
@@ -141,6 +149,22 @@ func (l *Listener) handleMessage(msg kafka.FTMessage) {
 		} else {
 			log.Warn(message)
 		}
+		return
+	}
+
+	input := map[string]interface{}{
+		"payload": map[string]interface{}{
+			"publication": n.Stub.Publication,
+		},
+	}
+
+	res, err := l.policyEvaluator.EvaluateContentPolicy(input)
+	if err != nil {
+		log.WithError(err).Error("Error with policy evaluation")
+		return
+	}
+	if res.Skip {
+		log.WithField("reasons", res.Reasons).Info("Skipping SV content")
 		return
 	}
 

@@ -28,7 +28,6 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 	tests := []struct {
 		name                 string
 		allowedContentTypes  []string
-		allowedPublishUUIDs  []string
 		msg                  kafka.FTMessage
 		expectedNotification *Notification
 		error                string
@@ -177,72 +176,11 @@ func TestKafkaMessageMapper_MapNotification(t *testing.T) {
 				},
 			},
 		},
-		{
-			name:                "invalid message with unsupported publication",
-			allowedContentTypes: []string{"Article"},
-			allowedPublishUUIDs: []string{"test1"},
-			msg: kafka.FTMessage{
-				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
-					Type:             "Article",
-					CanBeDistributed: "yes",
-					Publication:      []string{"test"},
-				}),
-			},
-			expectedNotification: nil,
-			error:                "content is not exportable: Unsupported publication",
-		},
-		{
-			name:                "valid message with supported publication",
-			allowedContentTypes: []string{"Article"},
-			allowedPublishUUIDs: []string{"test1"},
-			msg: kafka.FTMessage{
-				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
-					Type:             "Article",
-					CanBeDistributed: "yes",
-					Publication:      []string{"test1"},
-				}),
-			},
-			expectedNotification: &Notification{
-				Tid:    "tid_1234",
-				EvType: UPDATE,
-				Stub: content.Stub{
-					UUID:             "811e0591-5c71-4457-b8eb-8c22cf093117",
-					ContentType:      "Article",
-					CanBeDistributed: "yes",
-					Publication:      []string{"test1"},
-				},
-			},
-		},
-		{
-			name:                "valid message with supported publication and unsupported one",
-			allowedContentTypes: []string{"Article"},
-			allowedPublishUUIDs: []string{"test1"},
-			msg: kafka.FTMessage{
-				Headers: map[string]string{"X-Request-Id": "tid_1234"},
-				Body: generateRequestBody("http://upp-content-validator.svc.ft.com/content/811e0591-5c71-4457-b8eb-8c22cf093117", payload{
-					Type:             "Article",
-					CanBeDistributed: "yes",
-					Publication:      []string{"test1", "test"},
-				}),
-			},
-			expectedNotification: &Notification{
-				Tid:    "tid_1234",
-				EvType: UPDATE,
-				Stub: content.Stub{
-					UUID:             "811e0591-5c71-4457-b8eb-8c22cf093117",
-					ContentType:      "Article",
-					CanBeDistributed: "yes",
-					Publication:      []string{"test1", "test"},
-				},
-			},
-		},
 	}
 	originAllowlistRegex := regexp.MustCompile(`^http://upp-content-validator\.svc\.ft\.com(:\d{2,5})?/content/[\w-]+.*$`)
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			mapper := NewMessageMapper(originAllowlistRegex, test.allowedContentTypes, test.allowedPublishUUIDs)
+			mapper := NewMessageMapper(originAllowlistRegex, test.allowedContentTypes)
 			n, err := mapper.mapNotification(test.msg)
 			if test.error != "" {
 				require.EqualError(t, err, test.error)

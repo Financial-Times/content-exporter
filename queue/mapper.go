@@ -98,25 +98,19 @@ func (e *filterError) Error() string {
 }
 
 type MessageMapper struct {
-	originAllowlistRegex                     *regexp.Regexp
-	allowedContentTypes, allowedPublishUUIDs map[string]bool
+	originAllowlistRegex *regexp.Regexp
+	allowedContentTypes  map[string]bool
 }
 
-func NewMessageMapper(originAllowlist *regexp.Regexp, allowedContentTypes, allowedPublishUUIDs []string) *MessageMapper {
+func NewMessageMapper(originAllowlist *regexp.Regexp, allowedContentTypes []string) *MessageMapper {
 	allowedTypes := make(map[string]bool)
 	for _, v := range allowedContentTypes {
 		allowedTypes[v] = true
 	}
 
-	allowedUUIDs := make(map[string]bool)
-	for _, v := range allowedPublishUUIDs {
-		allowedUUIDs[v] = true
-	}
-
 	return &MessageMapper{
 		originAllowlistRegex: originAllowlist,
 		allowedContentTypes:  allowedTypes,
-		allowedPublishUUIDs:  allowedUUIDs,
 	}
 }
 
@@ -143,18 +137,6 @@ func (m *MessageMapper) mapNotification(msg kafka.FTMessage) (*Notification, err
 
 	if !m.allowedContentTypes[notification.Stub.ContentType] {
 		return nil, newFilterTypeError(notification.Stub.ContentType)
-	}
-
-	if notification.Stub.Publication != nil {
-		var present = false
-		for _, v := range notification.Stub.Publication {
-			if m.allowedPublishUUIDs[v] {
-				present = true
-			}
-		}
-		if !present {
-			return nil, newFilterError("Unsupported publication")
-		}
 	}
 
 	if notification.Stub.CanBeDistributed != "" && notification.Stub.CanBeDistributed != canBeDistributedYes {

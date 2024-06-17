@@ -23,7 +23,12 @@ type Client struct {
 	log                 *logger.UPPLogger
 }
 
-func NewClient(ctx context.Context, address, username, password, database, collection string, log *logger.UPPLogger) (*Client, error) {
+func NewClient(
+	ctx context.Context,
+	address, username, password, database, collection string,
+	allowedContentTypes, allowedPublishUUIDs []string,
+	log *logger.UPPLogger,
+) (*Client, error) {
 	client, err := mongodb.NewClient(ctx, mongodb.ConnectionParams{
 		Host:     address,
 		Username: username,
@@ -35,10 +40,12 @@ func NewClient(ctx context.Context, address, username, password, database, colle
 	}
 
 	return &Client{
-		client:     client,
-		database:   database,
-		collection: collection,
-		log:        log,
+		client:              client,
+		database:            database,
+		collection:          collection,
+		allowedContentTypes: allowedContentTypes,
+		allowedPublishUUIDs: allowedPublishUUIDs,
+		log:                 log,
 	}, nil
 }
 

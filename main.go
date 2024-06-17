@@ -17,12 +17,14 @@ import (
 	"github.com/Financial-Times/content-exporter/ecsarchive"
 	"github.com/Financial-Times/content-exporter/export"
 	"github.com/Financial-Times/content-exporter/mongo"
+	"github.com/Financial-Times/content-exporter/policy"
 	"github.com/Financial-Times/content-exporter/queue"
 	"github.com/Financial-Times/content-exporter/web"
 	health "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	"github.com/Financial-Times/kafka-client-go/v4"
+	"github.com/Financial-Times/opa-client-go"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
 	"github.com/gorilla/mux"
 	cli "github.com/jawher/mow.cli"
@@ -211,22 +213,34 @@ func main() {
 		Desc:   "Maximum goroutines to allocate for kafka message handling",
 		EnvVar: "MAX_GO_ROUTINES",
 	})
+	kafkaClusterArn := app.String(cli.StringOpt{
+		Name:   "kafkaClusterArn",
+		Desc:   "Kafka cluster ARN",
+		EnvVar: "KAFKA_CLUSTER_ARN",
+	})
 	allowedContentTypes := app.Strings(cli.StringsOpt{
 		Name:   "allowed-content-types",
 		Value:  []string{},
 		Desc:   `Comma-separated list of ContentTypes`,
 		EnvVar: "ALLOWED_CONTENT_TYPES",
 	})
-	kafkaClusterArn := app.String(cli.StringOpt{
-		Name:   "kafkaClusterArn",
-		Desc:   "Kafka cluster ARN",
-		EnvVar: "KAFKA_CLUSTER_ARN",
-	})
 	allowedPublishUUIDs := app.Strings(cli.StringsOpt{
 		Name:   "allowedPublishUUIDs",
 		Value:  []string{},
 		Desc:   `Comma-separated list of UUIDs`,
 		EnvVar: "ALLOWED_PUBLISH_UUIDS",
+	})
+	opaURL := app.String(cli.StringOpt{
+		Name:   "opaURL",
+		Desc:   "Open Policy Agent sidecar address",
+		Value:  "http://localhost:8181",
+		EnvVar: "OPA_URL",
+	})
+	opaPolicyPath := app.String(cli.StringOpt{
+		Name:   "opaPolicyPath",
+		Desc:   "The path to the OPA module in OPA module",
+		Value:  "content-exporter/content_msg_evaluator",
+		EnvVar: "OPA_POLICY_PATH",
 	})
 
 	log := logger.NewUPPLogger(serviceName, *logLevel)
@@ -240,7 +254,17 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		mongoClient, err := mongo.NewClient(ctx, *dbAddress, *dbUsername, *dbPassword, *dbName, *dbCollection, log)
+		mongoClient, err := mongo.NewClient(
+			ctx,
+			*dbAddress,
+			*dbUsername,
+			*dbPassword,
+			*dbName,
+			*dbCollection,
+			*allowedContentTypes,
+			*allowedPublishUUIDs,
+			log,
+		)
 		if err != nil {
 			log.WithError(err).Fatal("Error establishing database connection")
 		}
@@ -290,7 +314,8 @@ func main() {
 				locker,
 				maxGoRoutines,
 				*kafkaClusterArn,
-				*allowedPublishUUIDs,
+				*opaURL,
+				*opaPolicyPath,
 			)
 
 			if err != nil {
@@ -366,7 +391,8 @@ func prepareIncrementalExport(
 	locker *export.Locker,
 	maxGoRoutines *int,
 	kafkaClusterArn string,
-	allowedPublishUUIDs []string,
+	opaURL string,
+	opaPolicyPath string,
 ) (*queue.Listener, error) {
 	config := kafka.ConsumerConfig{
 		ClusterArn:              &kafkaClusterArn,
@@ -384,8 +410,16 @@ func prepareIncrementalExport(
 	contentOriginAllowListRegex := regexp.MustCompile(*contentOriginAllowlist)
 
 	messageHandler := queue.NewNotificationHandler(exporter, *delayForNotification)
-	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes, allowedPublishUUIDs)
-	listener := queue.NewListener(messageConsumer, messageHandler, messageMapper, locker, *maxGoRoutines, log)
+	messageMapper := queue.NewMessageMapper(contentOriginAllowListRegex, allowedContentTypes)
+
+	paths := map[string]string{
+		policy.FilterSVContent: opaPolicyPath,
+	}
+
+	opaClient := opa.NewOpenPolicyAgentClient(opaURL, paths, opa.WithLogger(log))
+	opaAgent := policy.NewOpenPolicyAgent(opaClient, log)
+
+	listener := queue.NewListener(messageConsumer, messageHandler, messageMapper, opaAgent, locker, *maxGoRoutines, log)
 
 	return listener, nil
 }
