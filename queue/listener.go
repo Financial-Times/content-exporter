@@ -164,7 +164,7 @@ func (l *Listener) handleMessage(msg kafka.FTMessage) {
 		return
 	}
 	if res.Skip {
-		log.WithField("reasons", res.Reasons).Info("Skipping SV content")
+		log.WithField("reasons", res.Reasons).Infof("Skipping non FT Pink content")
 		return
 	}
 
