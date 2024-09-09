@@ -154,7 +154,8 @@ func (l *Listener) handleMessage(msg kafka.FTMessage) {
 
 	input := map[string]interface{}{
 		"payload": map[string]interface{}{
-			"publication": n.Stub.Publication,
+			"publication":   n.Stub.Publication,
+			"editorialDesk": n.Stub.EditorialDesk,
 		},
 	}
 
@@ -164,7 +165,7 @@ func (l *Listener) handleMessage(msg kafka.FTMessage) {
 		return
 	}
 	if res.Skip {
-		log.WithField("reasons", res.Reasons).Infof("Skipping non FT Pink content")
+		log.WithField("reasons", res.Reasons).Infof("Skipping content")
 		return
 	}
 

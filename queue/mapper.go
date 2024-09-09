@@ -23,6 +23,7 @@ type payload struct {
 	Publication        []string `json:"publication"`
 	FirstPublishedDate string   `json:"firstPublishedDate,omitempty"`
 	PublishedDate      string   `json:"publishedDate,omitempty"`
+	EditorialDesk      string   `json:"editorialDesk,omitempty"`
 }
 
 func (p payload) getDateOrDefault() string {
@@ -64,6 +65,7 @@ func (e *event) toNotification(tid string) (*Notification, error) {
 			CanBeDistributed: e.Payload.CanBeDistributed,
 			ContentType:      e.Payload.Type,
 			Publication:      e.Payload.Publication,
+			EditorialDesk:    e.Payload.EditorialDesk,
 		},
 		EvType:     evType,
 		Terminator: export.NewTerminator(),

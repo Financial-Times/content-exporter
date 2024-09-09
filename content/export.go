@@ -11,6 +11,7 @@ type Stub struct {
 	UUID, Date, ContentType string
 	CanBeDistributed        string
 	Publication             []string
+	EditorialDesk           string
 }
 
 type Exporter struct {
