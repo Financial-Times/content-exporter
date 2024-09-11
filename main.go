@@ -239,7 +239,7 @@ func main() {
 	opaPolicyPath := app.String(cli.StringOpt{
 		Name:   "opaPolicyPath",
 		Desc:   "The path to the OPA module in OPA module",
-		Value:  "content-exporter/content_msg_evaluator",
+		Value:  "content_exporter/content_msg_evaluator",
 		EnvVar: "OPA_POLICY_PATH",
 	})
 
