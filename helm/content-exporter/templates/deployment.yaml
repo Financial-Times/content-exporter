@@ -163,7 +163,7 @@ spec:
           - "--set=services.bundlesS3Bucket.url=$(POLICY_BUCKET)"
           - "--set=services.bundlesS3Bucket.credentials.s3_signing.web_identity_credentials.aws_region=$(AWS_REGION)"
           - "--set=bundles.contentExporter.service=bundlesS3Bucket"
-          - "--set=bundles.contentExporter.resource=content-exporter.bundle.tar.gz"
+          - "--set=bundles.contentExporter.resource=content_exporter.bundle.tar.gz"
           - "--set=bundles.contentExporter.polling.min_delay_seconds=120"
           - "--set=bundles.contentExporter.polling.max_delay_seconds=300"
       {{- end}}

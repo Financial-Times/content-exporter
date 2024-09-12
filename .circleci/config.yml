@@ -28,10 +28,3 @@ workflows:
           requires:
             - build
           context: cm-team-github
-  snyk-scanning:
-    jobs:
-      - ft-golang-ci/scan:
-          name: scan-dependencies
-          context:
-            - cm-team-snyk
-            - cm-team-github
