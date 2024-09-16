@@ -1,6 +1,6 @@
 module github.com/Financial-Times/content-exporter
 
-go 1.22
+go 1.23
 
 require (
 	github.com/Financial-Times/cm-body-transformer v1.1.0
